@@ -12,18 +12,21 @@
 		<item>
 			<name>Show PFD</name>
 			<binding>
-				<command>nasal</command>
-                <script></script>
+				<command>property-toggle</command>
+				<property>/sim/rendering/draw-mask/aircraft</property>
 			</binding>
 		</item>
 
 		<item>
-			<name>Show / hide cockpit</name>
+			<name>Show / hide aircraft model</name>
+			<key>Shift-F3</key>
 			<binding>
-				<command>nasal</command>
-                <script></script>
+				<command>property-toggle</command>
+				<property>/sim/rendering/draw-mask/aircraft</property>
 			</binding>
 		</item>
-    </menu>
+		
+    </menu> <!-- of simPit menu -->
+
   </menubar-items>
 </PropertyList>
