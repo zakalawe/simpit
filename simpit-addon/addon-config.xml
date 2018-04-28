@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<PropertyList>
+    <!-- just a placeholder for now -->
+    <sim-pit>
+        <loaded type="bool">true</loaded>
+    </sim-pit>
+</PropertyList>

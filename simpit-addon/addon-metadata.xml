@@ -1,0 +1,32 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<PropertyList>
+    <meta>
+        <file-type type="string">FlightGear add-on metadata</file-type>
+        <format-version type="int">1</format-version>
+    </meta>
+
+    <addon>
+      <identifier type="string">com.goneabitbursar.fgfs.simpit</identifier>
+      <name type="string">simPit support addon</name>
+      <version type="string">0.1.0</version>
+
+        <short-description type="string">
+            Add-on to make my simPit work (better)
+      </short-description>
+
+      <long-description type="string">
+        This add-on adds global functionality and customisations to make my simPit
+        hardware work with more aircraft, by adding some global functionality, such
+        as canvases and input customisations
+      </long-description>
+
+
+      <authors>
+            <author>
+                <name type="string">James Turner</name>
+                <email type="string">james@flightgear.org</email>
+                <url type="string">https://github.com/zakalawe/simpit</url>
+            </author>
+        </authors>
+    </addon>
+</PropertyList>
