@@ -1,7 +1,10 @@
 
 # Nasal config for the simPit
 
-print("Loaded Nasal module for simPit")
+var main = func()
+{
+    print("Loaded Nasal module for simPit")
+}
 
 # add the PDF canvas
 

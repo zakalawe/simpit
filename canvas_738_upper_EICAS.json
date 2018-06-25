@@ -1,0 +1,22 @@
+{
+    "canvases": [
+        {
+            "path": "/canvas/by-index/texture[5]",
+            "rect": [
+                300,
+                253,
+                852,
+                745
+            ],
+            "url": "ws://simpc.local:8080/PropertyTreeMirror/canvas/by-index/texture[5]"
+        }
+    ],
+    "configName": "738_upper_EICAS",
+    "window-rect": [
+        0,
+        0,
+        1024,
+        768
+    ],
+    "window-state": 2
+}

@@ -1,0 +1,80 @@
+<?xml version="1.0"?>
+<PropertyList>
+  <sim>
+    <rendering>
+      <camera-group>
+        <camera>
+          <window>
+            <name type="string">main</name>
+            <host-name type="string"></host-name>
+            <display>1</display>
+            <screen>0</screen>
+            <fullscreen type = "bool">true</fullscreen>
+          </window>
+          <view>
+            <heading-deg type = "double">0</heading-deg>
+	    <y type="double">0.08</y> <!-- vertical offset in metres -->
+          </view>
+<!--
+          <frustum>
+            <top>0.133</top>
+            <bottom>-0.133</bottom>
+            <left>-.1668</left>
+            <right>.1668</right>
+            <near>0.4</near>
+            <far>120000.0</far>
+          </frustum>
+-->
+	<perspective>
+		<aspect-ratio>1.77777777</aspect-ratio>
+		<fovy-deg>60</fovy-deg>
+		<near>0.4</near>
+		<far>120000</far>
+	</perspective>
+
+        </camera>
+        <camera>
+          <window>
+            <name>cockpit</name>
+            <host-name type="string"></host-name>
+            <display>1</display>
+            <screen>0</screen>
+	    <y>2200</y>
+            <fullscreen type = "bool">false</fullscreen>
+            <width>1024</width>
+            <height>768</height>
+          </window>
+          <view>
+            <pitch-deg type = "double">-17.0</pitch-deg>
+           <!-- <absolute type="bool">true</absolute> -->
+	  </view>
+<!--
+          <frustum>
+            <top>0.133</top>
+            <bottom>-0.133</bottom>
+            <left>-.1668</left>
+            <right>.1668</right>
+            <near>0.1</near>
+            <far>5.0</far>
+          </frustum>
+-->
+        <perspective>
+                <aspect-ratio>1.77777777</aspect-ratio>
+                <fovy-deg>30</fovy-deg> 
+                <near>0.2</near>
+                <far>1000.0</far>
+        </perspective>
+
+
+        </camera>
+        <gui>
+          <window>
+            <name type="string">main</name>
+          </window>
+        </gui>
+      </camera-group>
+    </rendering>
+  </sim>
+</PropertyList>
+
+

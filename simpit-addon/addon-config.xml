@@ -4,4 +4,11 @@
     <sim-pit>
         <loaded type="bool">true</loaded>
     </sim-pit>
+
+    <sim>
+        <input>
+        <!-- disable event input so it doesn't clash with HID support-->
+            <no-event-input type="bool">true</no-event-input>
+        </input>
+    </sim>
 </PropertyList>
