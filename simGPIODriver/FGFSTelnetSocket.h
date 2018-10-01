@@ -21,12 +21,14 @@ public:
 
     void set(const std::string& path, const std::string& value);
 
-    double syncGetDouble(const std::string& path);
+    bool syncGetDouble(const std::string& path, double& result);
 
 
     void processReadLines(const std::string& buf, LineHandler handler);
-private:
+
     bool write(const std::string& msg);
+private:
+    bool checkForClose();
 
     int _rawSocket = -1;
     bool _connected = false;

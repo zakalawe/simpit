@@ -234,6 +234,20 @@ void FGFSTelnetSocket::processReadLines(const std::string& buf, LineHandler hand
     }
 }
 
+bool FGFSTelnetSocket::checkForClose()
+{
+    // use recv() to check for the socket being closed
+	char buffer[32];
+	if (recv(_rawSocket, buffer, sizeof(buffer), MSG_PEEK | MSG_DONTWAIT) == 0) {
+        std::cerr << "saw close of the socket" << std::endl;
+        _connected = false;
+        close();
+        return true;
+    }
+
+    return false;
+}
+
 bool FGFSTelnetSocket::poll(LineHandler handler, int timeoutMsec)
 {
     fd_set readFDs, errorFDs;
@@ -251,10 +265,13 @@ bool FGFSTelnetSocket::poll(LineHandler handler, int timeoutMsec)
     int readyFDs = ::select(FD_SETSIZE, &readFDs, nullptr, &errorFDs, &tv);
     if (readyFDs < 0) {
         perror("Select failed doing poll()");
+        _connected = false;
+        close();
         return false;
     }
 
     if (readyFDs == 0) {
+        checkForClose();
         return true; // timeout
     }
 
@@ -273,6 +290,8 @@ bool FGFSTelnetSocket::poll(LineHandler handler, int timeoutMsec)
         int len = ::read(_rawSocket, (void*) buf.data(), bufferLength - 1);
         if (len < 0) {
             std::cerr << "reading from socket failed" << std::endl;
+            _connected = false;
+            close();
             return false;
         }
 
@@ -316,21 +335,16 @@ void FGFSTelnetSocket::set(const std::string &path, const std::string &value)
     write("set " + path + " " + value);
 }
 
-double FGFSTelnetSocket::syncGetDouble(const std::string &path)
+bool FGFSTelnetSocket::syncGetDouble(const std::string &path, double& result)
 {
     write("get " + path);
-    double result = 0.0;
     bool ok = false;
 
     poll([&result, &ok](const std::string& line) {
         result = std::stod(line);
         ok = true;
     }, 1000);
-
-    if (!ok) {
-        std::cerr << "failed to get value for:" << path << std::endl;
-    }
-    return result;
+    return ok;
 }
 
 bool FGFSTelnetSocket::write(const std::string &msg)

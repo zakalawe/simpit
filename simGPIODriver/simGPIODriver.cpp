@@ -3,6 +3,7 @@
 #include <iostream>
 #include <cstdlib>
 #include <unistd.h>
+#include <ctime>
 
 #include "FGFSTelnetSocket.h"
 
@@ -58,7 +59,8 @@ void initGPIO()
 const std::string fgfsHost = "simpc.local";
 const int fgfsPort = 5501;
 
-const int defaultReconnectBackoff = 1000;
+const int defaultReconnectBackoff = 4;
+const int keepAliveInterval = 10;
 
 double gearPositionNorm[3] = {0.0, 0.0, 0.0};
 
@@ -72,11 +74,26 @@ void setupSubscriptions(FGFSTelnetSocket& socket)
     socket.subscribe("/gear/gear[2]/position-norm");
 }
 
-void getInitialState(FGFSTelnetSocket& socket)
+bool getInitialState(FGFSTelnetSocket& socket)
 {
-    for (int i=0; i<3; ++i) {
-        gearPositionNorm[i] = socket.syncGetDouble("/gear/gear[" + to_string(i) + "]/position-norm");
-    }
+    int attempts = 5;
+    bool ok;
+
+    for (int attempt=0; attempt < attempts; ++attempt) {
+        bool attemptOk = true;
+        for (int i=0; i<3; ++i) {
+            ok = socket.syncGetDouble("/gear/gear[" + to_string(i) + "]/position-norm",
+                                    gearPositionNorm[i]);
+            if (!ok) 
+                attemptOk = false;
+        }
+
+        if (attemptOk) { // all values in this attempt worked, we are done
+            return true;
+        }
+    } // of attempts
+    
+    return false;
 }
 
 uint8_t lastLEDState = 0;
@@ -106,6 +123,36 @@ void updateGearLEDState()
         lastLEDState = ledByte;
         write_port(Gear_I2C_Address, Gear_Port, ledByte);
     }
+}
+
+enum class SpecialLEDState
+{
+    Connecting = 0,
+    ConnectBackoff,
+    ConnectBackoff2,
+    DidConnect
+};
+
+void setSpecialLEDState(SpecialLEDState state)
+{
+    uint8_t ledByte = 0;
+    switch (state) {
+    case SpecialLEDState::Connecting:
+        ledByte = 0x08;
+        break;
+    case SpecialLEDState::ConnectBackoff:
+        ledByte = 0x40;
+        break;
+    case SpecialLEDState::ConnectBackoff2:
+        ledByte = 0x10;
+        break;
+    case SpecialLEDState::DidConnect:
+        ledByte = 0xf6;
+        break;
+    default:
+        break;
+    }
+    write_port(Gear_I2C_Address, Gear_Port, ledByte);
 }
 
 bool lastGearUpState = false;
@@ -146,7 +193,26 @@ void pollHandler(const std::string& message)
         gearPositionNorm[2] = std::stod(message.substr(28));
         LEDUpdateRequired = true;
     } else {
-        std::cerr << "unhandled message:" << message << std::endl;
+        if (message.find("subscribe") == 0) {
+            // subscription confirmation, fine
+        } else if (message == "/") {
+            // this is the response to the 'pwd' query we use to keep
+            // the socket alive.
+        } else {
+            std::cerr << "unhandled message:" << message << std::endl;
+        }
+    }
+}
+
+void idleForTime(int timeSec)
+{
+    time_t endTime = time(nullptr) + timeSec;
+    setSpecialLEDState(SpecialLEDState::ConnectBackoff);
+    while (time(nullptr) < endTime) {
+        ::usleep(500 * 1000);
+        setSpecialLEDState(SpecialLEDState::ConnectBackoff2);
+        ::usleep(500 * 1000);
+        setSpecialLEDState(SpecialLEDState::ConnectBackoff);
     }
 }
 
@@ -170,23 +236,46 @@ int main(int argc, char* argv[])
     initGPIO();
 
     int reconnectBackoff = defaultReconnectBackoff;
+    time_t lastReadTime = time(nullptr);
 
     while (true) {
         if (!socket.isConnected()) {
+        //    std::cerr << "starting connection" << std::endl;
+            setSpecialLEDState(SpecialLEDState::Connecting);
             if (!socket.connect(host, port)) {
-                ::usleep(reconnectBackoff * 1000);
-                reconnectBackoff = std::min(reconnectBackoff * 2, 1000 * 30);
+                idleForTime(reconnectBackoff);
+                reconnectBackoff = std::min(reconnectBackoff * 2, 30);
                 continue;
             }
 
             // reset back-off after succesful connect
             reconnectBackoff = defaultReconnectBackoff;
+            setSpecialLEDState(SpecialLEDState::DidConnect);
 
-            getInitialState(socket);
+            if (!getInitialState(socket)) {
+                std::cerr << "failed to get initial state, will re-try" << std::endl;
+                socket.close();
+                continue;
+            }
+
             setupSubscriptions(socket);
+            setSpecialLEDState(SpecialLEDState::DidConnect);
         }
 
-        socket.poll(pollHandler, 50 /* msec, so 20hz */);
+        time_t nowSeconds = time(nullptr);
+        if ((nowSeconds - lastReadTime) > keepAliveInterval) {
+            // force a write to check for dead socket
+            lastReadTime = nowSeconds;
+            socket.write("pwd");
+        }
+
+        bool ok = socket.poll(pollHandler, 500 /* msec, so 20hz */);
+        if (!ok) {
+            // poll failed, close out
+            socket.close();
+            continue;
+        }
+
         pollGearLeverState(socket);
 
         if (LEDUpdateRequired) {
