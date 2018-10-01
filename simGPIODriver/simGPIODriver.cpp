@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <unistd.h>
 #include <ctime>
+#include <signal.h>
 
 #include "FGFSTelnetSocket.h"
 
@@ -230,6 +231,7 @@ int main(int argc, char* argv[])
     }
 
     // install signal handlers?
+    signal(SIGPIPE, SIG_IGN);
 
     FGFSTelnetSocket socket;
 
