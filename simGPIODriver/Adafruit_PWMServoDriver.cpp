@@ -16,7 +16,18 @@
  ****************************************************/
 
 #include "Adafruit_PWMServoDriver.h"
-#include <Wire.h>
+
+#include <linux/i2c-dev.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <algorithm>
+#include <cmath>
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h> // for usleep
+
+static const char *fileName = "/dev/i2c-1"; // change to /dev/i2c-0 if you are using a revision 0002 or 0003 model B
 
 // Set to true to print some debug messages, or false to disable them.
 //#define ENABLE_DEBUG_OUTPUT
@@ -28,35 +39,29 @@
     @param  addr The 7-bit I2C address to locate this chip, default is 0x40
 */
 /**************************************************************************/
-Adafruit_PWMServoDriver::Adafruit_PWMServoDriver(uint8_t addr) {
+Adafruit_PWMServoDriver::Adafruit_PWMServoDriver(uint8_t addr) 
+{
   _i2caddr = addr;
 
-#if defined(ARDUINO_SAM_DUE)
-  _i2c = &Wire1;
-#else
-  _i2c = &Wire;
-#endif
+  if ((_i2cHandle = open(fileName, O_RDWR)) < 0) {
+		printf("Failed to open i2c port for read %s \n", strerror(errno));
+		exit(1);
+	}
+
+	if (ioctl(_i2cHandle, I2C_SLAVE, _i2caddr) < 0) {
+		printf("Failed to write to i2c port for read\n");
+		exit(1);
+	}
 }
 
-/**************************************************************************/
-/*! 
-    @brief  Instantiates a new PCA9685 PWM driver chip with the I2C address on a TwoWire interface
-    @param  i2c  A pointer to a 'Wire' compatible object that we'll use to communicate with
-    @param  addr The 7-bit I2C address to locate this chip, default is 0x40
-*/
-/**************************************************************************/
-Adafruit_PWMServoDriver::Adafruit_PWMServoDriver(TwoWire *i2c, uint8_t addr) {
-  _i2c = i2c;
-  _i2caddr = addr;
-}
 
 /**************************************************************************/
 /*! 
     @brief  Setups the I2C interface and hardware
 */
 /**************************************************************************/
-void Adafruit_PWMServoDriver::begin(void) {
-  _i2c->begin();
+void Adafruit_PWMServoDriver::begin(void) 
+{
   reset();
   // set a default frequency
   setPWMFreq(1000);
@@ -68,9 +73,10 @@ void Adafruit_PWMServoDriver::begin(void) {
     @brief  Sends a reset command to the PCA9685 chip over I2C
 */
 /**************************************************************************/
-void Adafruit_PWMServoDriver::reset(void) {
+void Adafruit_PWMServoDriver::reset(void) 
+{    
   write8(PCA9685_MODE1, 0x80);
-  delay(10);
+  usleep(1000);
 }
 
 /**************************************************************************/
@@ -105,7 +111,7 @@ void Adafruit_PWMServoDriver::setPWMFreq(float freq) {
   write8(PCA9685_MODE1, newmode); // go to sleep
   write8(PCA9685_PRESCALE, prescale); // set the prescaler
   write8(PCA9685_MODE1, oldmode);
-  delay(5);
+  usleep(5000);
   write8(PCA9685_MODE1, oldmode | 0xa0);  //  This sets the MODE1 register to turn on auto increment.
 
 #ifdef ENABLE_DEBUG_OUTPUT
@@ -126,13 +132,22 @@ void Adafruit_PWMServoDriver::setPWM(uint8_t num, uint16_t on, uint16_t off) {
   Serial.print("Setting PWM "); Serial.print(num); Serial.print(": "); Serial.print(on); Serial.print("->"); Serial.println(off);
 #endif
 
-  _i2c->beginTransmission(_i2caddr);
-  _i2c->write(LED0_ON_L+4*num);
-  _i2c->write(on);
-  _i2c->write(on>>8);
-  _i2c->write(off);
-  _i2c->write(off>>8);
-  _i2c->endTransmission();
+  uint8_t buf[5] = {LED0_ON_L+4*num,
+    on, on >> 8, off, off >> 8 };
+
+  if ((write(_i2cHandle, buf, 5)) != 5) {
+		printf("Failed to write to i2c device for write\n");
+		exit(1);
+	}
+
+
+  // _i2c->beginTransmission(_i2caddr);
+  // _i2c->write(LED0_ON_L+4*num);
+  // _i2c->write(on);
+  // _i2c->write(on>>8);
+  // _i2c->write(off);
+  // _i2c->write(off>>8);
+  // _i2c->endTransmission();
 }
 
 /**************************************************************************/
@@ -146,7 +161,7 @@ void Adafruit_PWMServoDriver::setPWM(uint8_t num, uint16_t on, uint16_t off) {
 void Adafruit_PWMServoDriver::setPin(uint8_t num, uint16_t val, bool invert)
 {
   // Clamp value between 0 and 4095 inclusive.
-  val = min(val, (uint16_t)4095);
+  val = std::min(val, (uint16_t)4095);
   if (invert) {
     if (val == 0) {
       // Special value for signal fully on.
@@ -177,18 +192,26 @@ void Adafruit_PWMServoDriver::setPin(uint8_t num, uint16_t val, bool invert)
 
 /*******************************************************************************************/
 
-uint8_t Adafruit_PWMServoDriver::read8(uint8_t addr) {
-  _i2c->beginTransmission(_i2caddr);
-  _i2c->write(addr);
-  _i2c->endTransmission();
+uint8_t Adafruit_PWMServoDriver::read8(uint8_t addr) 
+{
+  uint8_t buf[1] = { addr };
+  if ((write(_i2cHandle, buf, 1)) != 1) {
+		printf("Failed to write to i2c device for write\n");
+		exit(1);
+	}
 
-  _i2c->requestFrom((uint8_t)_i2caddr, (uint8_t)1);
-  return _i2c->read();
+  if (read(_i2cHandle, buf, 1) != 1) { // Read back data into buf[]
+		printf("Failed to read from slave\n");
+		exit(1);
+	}
+
+  return buf[0];
 }
 
 void Adafruit_PWMServoDriver::write8(uint8_t addr, uint8_t d) {
-  _i2c->beginTransmission(_i2caddr);
-  _i2c->write(addr);
-  _i2c->write(d);
-  _i2c->endTransmission();
+  uint8_t buf[2] = { addr, d };
+  if ((write(_i2cHandle, buf, 2)) != 2) {
+		printf("Failed to write to i2c device for write\n");
+		exit(1);
+	}
 }

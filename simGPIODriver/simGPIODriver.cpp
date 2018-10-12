@@ -23,11 +23,22 @@ const uint8_t Sixpack_I2C_Address = 0x21;
 const uint8_t Sixpack_Lamp_Port = 0;
 const uint8_t Sixpack_Button_Port = 1;
 
+// Depending on your servo make, the pulse width min and max may vary, you 
+// want these to be as small/large as possible without hitting the hard stop
+// for max range. You'll have to tweak them as necessary to match the servos you
+// have!
+#define SERVOMIN  150 // this is the 'minimum' pulse length count (out of 4096)
+#define SERVOMAX  600 // this is the 'maximum' pulse length count (out of 4096)
+
 #if defined(LINUX_BUILD)
 
 extern "C" {
 #include "ABE_IoPi.h"
 }
+
+#include "Adafruit_PWMServoDriver.h"
+
+Adafruit_PWMServoDriver* servoDriver = nullptr;
 
 void initGPIO()
 {
@@ -49,6 +60,12 @@ void initGPIO()
 // clear everything
     write_port(Sixpack_I2C_Address, Sixpack_Lamp_Port, 0);
     write_port(Gear_I2C_Address, Gear_Port, 0);
+
+
+    servoDriver = new Adafruit_PWMServoDriver(0x40); // I2C address
+    servoDriver->setPWMFreq(60); // 60Hz frequency for analogue servos
+    servoDriver->begin();
+
 }
 
 #else
@@ -327,17 +344,27 @@ void pollHandler(const std::string& message)
     }
 }
 
+int pulselen = SERVOMIN;
+
 void idleForTime(int timeSec)
 {
     time_t endTime = time(nullptr) + timeSec;
     setSpecialLEDState(SpecialLEDState::ConnectBackoff);
     while (time(nullptr) < endTime) {
+    #if defined(LINUX_BUILD)
+        servoDriver->setPWM(0, 0, pulselen);
+        pulselen++;
+        if (pulselen >= SERVOMAX) {
+            pulselen = SERVOMIN;
+        }
+#endif
         ::usleep(500 * 1000);
         setSpecialLEDState(SpecialLEDState::ConnectBackoff2);
         ::usleep(500 * 1000);
         setSpecialLEDState(SpecialLEDState::ConnectBackoff);
     }
 }
+
 
 int main(int argc, char* argv[])
 {
@@ -363,6 +390,15 @@ int main(int argc, char* argv[])
     time_t lastReadTime = time(nullptr);
 
     while (true) {
+
+#if defined(LINUX_BUILD)
+        servoDriver->setPWM(0, 0, pulselen);
+        pulselen++;
+        if (pulselen >= SERVOMAX) {
+            pulselen = SERVOMIN;
+        }
+#endif
+
         if (!socket.isConnected()) {
         //    std::cerr << "starting connection" << std::endl;
             setSpecialLEDState(SpecialLEDState::Connecting);
