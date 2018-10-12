@@ -17,9 +17,13 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     SET(ABE_sources
         ABE_IoPi.c
         ABE_IoPi.h)
+
+    SET(ADAfruit_sources
+        Adafruit_PWMServoDriver.cpp
+        Adafruit_PWMServoDriver.h)
 endif()
 
-add_executable(simGPIODriver ${SOURCES} ${ABE_sources})
+add_executable(simGPIODriver ${SOURCES} ${ABE_sources} ${ADAfruit_sources})
 
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
