@@ -23,6 +23,7 @@ public:
 
     bool syncGetDouble(const std::string& path, double& result);
 
+    bool syncGetBool(const std::string& path, bool& result);
 
     void processReadLines(const std::string& buf, LineHandler handler);
 

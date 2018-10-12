@@ -3,6 +3,7 @@
 #include <iostream>
 #include <cstdio>
 #include <cstring>
+#include <exception>
 
 #include <errno.h>
 #include <netdb.h> // for gethostbyname
@@ -346,6 +347,21 @@ bool FGFSTelnetSocket::syncGetDouble(const std::string &path, double& result)
     }, 1000);
     return ok;
 }
+
+bool FGFSTelnetSocket::syncGetBool(const std::string& path, bool& result)
+{
+    write("get " + path);
+    bool ok = false;
+
+    poll([&result, &ok](const std::string& line) {
+        result = (line == "true");
+        ok = true;
+    }, 1000);
+    
+
+    return ok;
+}
+
 
 bool FGFSTelnetSocket::write(const std::string &msg)
 {

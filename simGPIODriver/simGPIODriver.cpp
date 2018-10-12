@@ -2,6 +2,11 @@
 #include <string>
 #include <iostream>
 #include <cstdlib>
+#include <vector>
+#include <cassert>
+#include <algorithm>
+#include <exception>
+
 #include <unistd.h>
 #include <ctime>
 #include <signal.h>
@@ -38,6 +43,11 @@ void initGPIO()
     set_port_direction(Sixpack_I2C_Address, Sixpack_Lamp_Port, 0x0);
     set_port_direction(Sixpack_I2C_Address, Sixpack_Button_Port, 0xff);
 
+    set_port_pullups(Sixpack_I2C_Address, Sixpack_Button_Port, 0xff); // enable internal pullups 
+    invert_port(Sixpack_I2C_Address, Sixpack_Button_Port, 0x0f); // invert output so bank will read as 0
+
+// clear everything
+    write_port(Sixpack_I2C_Address, Sixpack_Lamp_Port, 0);
     write_port(Gear_I2C_Address, Gear_Port, 0);
 }
 
@@ -45,6 +55,11 @@ void initGPIO()
 void write_port(char address, char port, char value)
 {
 }
+
+void write_pin(char address, char port, char value)
+{
+}
+
 
 char read_port(char address, char port)
 {
@@ -68,25 +83,52 @@ double gearPositionNorm[3] = {0.0, 0.0, 0.0};
 const double gearDownAndLockedThreshold = 0.98;
 const double gearUpAndLockedThreshold = 0.02;
 
+std::vector<std::string> lampNames = {
+    "master-caution", "fire-warn", "fuel", "ovht",
+    "irs", "apu", "flt-cont", "elec"};
+
+uint8_t lampBits = 0;
+
 void setupSubscriptions(FGFSTelnetSocket& socket)
 {
     socket.subscribe("/gear/gear[0]/position-norm");
     socket.subscribe("/gear/gear[1]/position-norm");
     socket.subscribe("/gear/gear[2]/position-norm");
+
+    for (auto s : lampNames) {
+        socket.subscribe("/instrumentation/weu/outputs/" + s + "-lamp");
+    }
+   
 }
 
 bool getInitialState(FGFSTelnetSocket& socket)
 {
     int attempts = 5;
     bool ok;
+    lampBits = 0;
+
+    assert(lampNames.size() == 8);
 
     for (int attempt=0; attempt < attempts; ++attempt) {
         bool attemptOk = true;
         for (int i=0; i<3; ++i) {
             ok = socket.syncGetDouble("/gear/gear[" + to_string(i) + "]/position-norm",
                                     gearPositionNorm[i]);
+
             if (!ok) 
                 attemptOk = false;
+        }
+
+        for (int i=0; i<8; ++i) {
+            bool b;
+            ok = socket.syncGetBool("/instrumentation/weu/outputs/" + lampNames.at(i) + "-lamp", b);
+            if (!ok) {
+                attemptOk = false;
+                std::cerr << "failed to get initial state for:" << "/instrumentation/weu/outputs/" + lampNames.at(i) + "-lamp" << std::endl;
+            }
+            if (b) {
+                lampBits |= (1 << i); // set the lamp bit
+            }
         }
 
         if (attemptOk) { // all values in this attempt worked, we are done
@@ -97,8 +139,9 @@ bool getInitialState(FGFSTelnetSocket& socket)
     return false;
 }
 
-uint8_t lastLEDState = 0;
+uint8_t lastLEDState = 0, lastLampLEDState = 0;
 bool LEDUpdateRequired = true;
+bool SixpackLEDUpdateRequired = true;
 
 void updateGearLEDState()
 {
@@ -123,6 +166,18 @@ void updateGearLEDState()
         std::cout << "LED byte is now " << std::oct << (int) ledByte << std::endl;
         lastLEDState = ledByte;
         write_port(Gear_I2C_Address, Gear_Port, ledByte);
+    }
+}
+
+void updateLampLEDState()
+{
+    if (lastLampLEDState != lampBits) {
+        lastLampLEDState = lampBits;
+        std::cout << "lamp LED byte is now " << std::hex << (int) lampBits << std::endl;
+        write_port(Sixpack_I2C_Address, Sixpack_Lamp_Port, (char) lampBits);
+
+        write_pin(Sixpack_I2C_Address, 8, 1);
+
     }
 }
 
@@ -154,6 +209,12 @@ void setSpecialLEDState(SpecialLEDState state)
         break;
     }
     write_port(Gear_I2C_Address, Gear_Port, ledByte);
+
+    static uint8_t lampByte = 0;
+    if (lampByte == 0)
+        lampByte = 1;
+    write_port(Sixpack_I2C_Address, Sixpack_Lamp_Port, lampByte);
+    lampByte <<= 1;
 }
 
 bool lastGearUpState = false;
@@ -178,6 +239,42 @@ void pollGearLeverState(FGFSTelnetSocket& socket)
     }
 }
 
+
+bool weuButtons[3] = {false, false, false };
+
+void pollWEUButtons(FGFSTelnetSocket& socket)
+{
+    const uint8_t inPins = read_port(Sixpack_I2C_Address, Sixpack_Button_Port);
+    for (int b=0; b< 3; ++b) {
+        int pinIndex = b + 1;
+        bool state = (inPins & (1 << pinIndex));
+        if (weuButtons[b] != state) {
+            if (state && (b == 0)) {
+                std::cerr << "Master caution push" << std::endl;
+                socket.write("run weu-caution-button");
+            } else if (state && (b == 2)) {
+                std::cerr << "Fire warn push" << std::endl;
+                socket.write("run weu-fire-button");
+            } else if (b == 1) {
+                if (state) {
+                    std::cerr << "Recall push" << std::endl;
+                    socket.write("run weu-recall-button");
+                } else {
+                    std::cerr << "Recall release" << std::endl;
+                    socket.write("run weu-recall-button-off");
+                }
+            }
+
+            weuButtons[b] = state;
+        }
+    }
+}
+
+const char* WEU_OUTPUT_PREFIX = "/instrumentation/weu/outputs/";
+const int WEU_OUTPUT_PREFIX_LEN = 29;
+const char* WEU_LAMP_SUFFIX = "-lamp=";
+const int WEU_LAMP_SUFFIX_LEN = 6;
+
 void pollHandler(const std::string& message)
 {
     // Telnet code doesn't send index for [0]
@@ -193,6 +290,31 @@ void pollHandler(const std::string& message)
     } else if (message.find("/gear/gear[2]/position-norm=") == 0) {
         gearPositionNorm[2] = std::stod(message.substr(28));
         LEDUpdateRequired = true;
+    } else if (message.find("/instrumentation/weu/outputs/") == 0) {
+        const auto lampSuffix = message.find(WEU_LAMP_SUFFIX);
+        const std::string lampName = message.substr(WEU_OUTPUT_PREFIX_LEN,
+            lampSuffix - WEU_OUTPUT_PREFIX_LEN);
+
+        auto it = std::find(lampNames.begin(), lampNames.end(), lampName);
+        if (it == lampNames.end()) {
+            std::cerr << "weird lamp name:" << lampName << std::endl;
+            std::cerr << "full message was:" << message << std::endl;
+        } else {
+            try {
+                int lampIndex = std::distance(lampNames.begin(), it);
+                const auto v = message.substr(lampSuffix + WEU_LAMP_SUFFIX_LEN);
+                if (v == "true") {
+                    lampBits |= 1 << lampIndex;
+                } else {
+                    lampBits &= ~(1 << lampIndex); // clear the bit
+                }
+            } catch (std::exception& e) {
+                std::cerr << "exception processing value data:" << message.substr(lampSuffix + WEU_LAMP_SUFFIX_LEN) << std::endl;
+                std::cerr << "full message was:" << message << std::endl;
+            }
+        }
+
+        SixpackLEDUpdateRequired = true;
     } else {
         if (message.find("subscribe") == 0) {
             // subscription confirmation, fine
@@ -279,10 +401,16 @@ int main(int argc, char* argv[])
         }
 
         pollGearLeverState(socket);
+        pollWEUButtons(socket);
 
         if (LEDUpdateRequired) {
             LEDUpdateRequired = false;
             updateGearLEDState();
+        }
+
+        if (SixpackLEDUpdateRequired) {
+            SixpackLEDUpdateRequired = false;
+            updateLampLEDState();
         }
         // check for kill signal
     }
