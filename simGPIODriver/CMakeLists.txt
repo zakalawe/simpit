@@ -31,3 +31,7 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 endif()
 
 install(TARGETS simGPIODriver RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+    add_executable(servoTest servoTest.cpp ${ADAfruit_sources})
+endif()

@@ -62,10 +62,8 @@ void initGPIO()
     write_port(Gear_I2C_Address, Gear_Port, 0);
 
 
-    servoDriver = new Adafruit_PWMServoDriver(0x40); // I2C address
-    servoDriver->setPWMFreq(60); // 60Hz frequency for analogue servos
+    servoDriver = new Adafruit_PWMServoDriver(0x40, 60); // I2C address
     servoDriver->begin();
-
 }
 
 #else
@@ -115,7 +113,6 @@ void setupSubscriptions(FGFSTelnetSocket& socket)
     for (auto s : lampNames) {
         socket.subscribe("/instrumentation/weu/outputs/" + s + "-lamp");
     }
-   
 }
 
 bool getInitialState(FGFSTelnetSocket& socket)
@@ -192,9 +189,6 @@ void updateLampLEDState()
         lastLampLEDState = lampBits;
         std::cout << "lamp LED byte is now " << std::hex << (int) lampBits << std::endl;
         write_port(Sixpack_I2C_Address, Sixpack_Lamp_Port, (char) lampBits);
-
-        write_pin(Sixpack_I2C_Address, 8, 1);
-
     }
 }
 
@@ -344,20 +338,11 @@ void pollHandler(const std::string& message)
     }
 }
 
-int pulselen = SERVOMIN;
-
 void idleForTime(int timeSec)
 {
     time_t endTime = time(nullptr) + timeSec;
     setSpecialLEDState(SpecialLEDState::ConnectBackoff);
     while (time(nullptr) < endTime) {
-    #if defined(LINUX_BUILD)
-        servoDriver->setPWM(0, 0, pulselen);
-        pulselen++;
-        if (pulselen >= SERVOMAX) {
-            pulselen = SERVOMIN;
-        }
-#endif
         ::usleep(500 * 1000);
         setSpecialLEDState(SpecialLEDState::ConnectBackoff2);
         ::usleep(500 * 1000);
@@ -390,15 +375,6 @@ int main(int argc, char* argv[])
     time_t lastReadTime = time(nullptr);
 
     while (true) {
-
-#if defined(LINUX_BUILD)
-        servoDriver->setPWM(0, 0, pulselen);
-        pulselen++;
-        if (pulselen >= SERVOMAX) {
-            pulselen = SERVOMIN;
-        }
-#endif
-
         if (!socket.isConnected()) {
         //    std::cerr << "starting connection" << std::endl;
             setSpecialLEDState(SpecialLEDState::Connecting);

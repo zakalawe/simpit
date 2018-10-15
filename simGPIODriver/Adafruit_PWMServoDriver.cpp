@@ -27,6 +27,8 @@
 #include <fcntl.h>
 #include <unistd.h> // for usleep
 
+#include <iostream>
+
 static const char *fileName = "/dev/i2c-1"; // change to /dev/i2c-0 if you are using a revision 0002 or 0003 model B
 
 // Set to true to print some debug messages, or false to disable them.
@@ -39,7 +41,7 @@ static const char *fileName = "/dev/i2c-1"; // change to /dev/i2c-0 if you are u
     @param  addr The 7-bit I2C address to locate this chip, default is 0x40
 */
 /**************************************************************************/
-Adafruit_PWMServoDriver::Adafruit_PWMServoDriver(uint8_t addr) 
+Adafruit_PWMServoDriver::Adafruit_PWMServoDriver(uint8_t addr, float freq) 
 {
   _i2caddr = addr;
 
@@ -52,6 +54,16 @@ Adafruit_PWMServoDriver::Adafruit_PWMServoDriver(uint8_t addr)
 		printf("Failed to write to i2c port for read\n");
 		exit(1);
 	}
+
+// prescale compuation
+  freq *= 0.9;  // Correct for overshoot in the frequency setting (see issue #11).
+  float prescaleval = 25000000;
+  prescaleval /= 4096;
+  prescaleval /= freq;
+  prescaleval -= 1;
+
+  _prescale = floor(prescaleval + 0.5);
+  std::cerr << "Final prescale:" << std::hex << (int) _prescale << std::endl;
 }
 
 
@@ -63,10 +75,20 @@ Adafruit_PWMServoDriver::Adafruit_PWMServoDriver(uint8_t addr)
 void Adafruit_PWMServoDriver::begin(void) 
 {
   reset();
-  // set a default frequency
-  setPWMFreq(1000);
-}
 
+  const uint8_t ALLCALL = 0x01; 
+  const uint8_t AUTO_INCREMENT = 0x20; 
+  const uint8_t SLEEP = 0x10; 
+
+  write8(PCA9685_MODE2, 0x04); // OUTDRV
+  write8(PCA9685_MODE1, ALLCALL); 
+
+  write8(PCA9685_MODE1, SLEEP); // go to sleep
+  usleep(1000); // wait for oscillator to shut down
+  write8(PCA9685_PRESCALE, _prescale); // set the prescaler
+  write8(PCA9685_MODE1, ALLCALL | AUTO_INCREMENT | 0x80); // wake up
+  usleep(1000); // wait for oscillator to come back up
+}
 
 /**************************************************************************/
 /*! 
@@ -77,46 +99,6 @@ void Adafruit_PWMServoDriver::reset(void)
 {    
   write8(PCA9685_MODE1, 0x80);
   usleep(1000);
-}
-
-/**************************************************************************/
-/*! 
-    @brief  Sets the PWM frequency for the entire chip, up to ~1.6 KHz
-    @param  freq Floating point frequency that we will attempt to match
-*/
-/**************************************************************************/
-void Adafruit_PWMServoDriver::setPWMFreq(float freq) {
-#ifdef ENABLE_DEBUG_OUTPUT
-  Serial.print("Attempting to set freq ");
-  Serial.println(freq);
-#endif
-
-  freq *= 0.9;  // Correct for overshoot in the frequency setting (see issue #11).
-  float prescaleval = 25000000;
-  prescaleval /= 4096;
-  prescaleval /= freq;
-  prescaleval -= 1;
-
-#ifdef ENABLE_DEBUG_OUTPUT
-  Serial.print("Estimated pre-scale: "); Serial.println(prescaleval);
-#endif
-
-  uint8_t prescale = floor(prescaleval + 0.5);
-#ifdef ENABLE_DEBUG_OUTPUT
-  Serial.print("Final pre-scale: "); Serial.println(prescale);
-#endif
-  
-  uint8_t oldmode = read8(PCA9685_MODE1);
-  uint8_t newmode = (oldmode&0x7F) | 0x10; // sleep
-  write8(PCA9685_MODE1, newmode); // go to sleep
-  write8(PCA9685_PRESCALE, prescale); // set the prescaler
-  write8(PCA9685_MODE1, oldmode);
-  usleep(5000);
-  write8(PCA9685_MODE1, oldmode | 0xa0);  //  This sets the MODE1 register to turn on auto increment.
-
-#ifdef ENABLE_DEBUG_OUTPUT
-  Serial.print("Mode now 0x"); Serial.println(read8(PCA9685_MODE1), HEX);
-#endif
 }
 
 /**************************************************************************/
@@ -132,22 +114,17 @@ void Adafruit_PWMServoDriver::setPWM(uint8_t num, uint16_t on, uint16_t off) {
   Serial.print("Setting PWM "); Serial.print(num); Serial.print(": "); Serial.print(on); Serial.print("->"); Serial.println(off);
 #endif
 
+// note this requires auto-increment to be active
   uint8_t buf[5] = {LED0_ON_L+4*num,
-    on, on >> 8, off, off >> 8 };
+    on & 0xff, 
+    on >> 8, 
+    off & 0xff, 
+    off >> 8 };
 
   if ((write(_i2cHandle, buf, 5)) != 5) {
 		printf("Failed to write to i2c device for write\n");
 		exit(1);
 	}
-
-
-  // _i2c->beginTransmission(_i2caddr);
-  // _i2c->write(LED0_ON_L+4*num);
-  // _i2c->write(on);
-  // _i2c->write(on>>8);
-  // _i2c->write(off);
-  // _i2c->write(off>>8);
-  // _i2c->endTransmission();
 }
 
 /**************************************************************************/
