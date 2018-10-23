@@ -16,4 +16,5 @@ TimeoutStartSec=infinity
 WorkingDirectory=/home/pi
 
 [Install]
+WantedBy=multi-user.target
 

@@ -1,0 +1,14 @@
+[Unit]
+Description=simPi GPIO runner
+#Documentation=
+
+
+[Service]
+Type=simple
+ExecStart=/home/pi/simpit/simGPIODriver/simGPIODriver
+Restart=always
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=multi-user.target
+
