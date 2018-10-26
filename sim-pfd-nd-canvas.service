@@ -1,0 +1,20 @@
+[Unit]
+Description=simPit FGQCanvas starter
+#Documentation=
+#
+
+[Service]
+Type=simple
+# temporary safety check until all DMs are converted to correct
+# display-manager.service symlink handling
+ExecStart=/home/jmt/simpit/run_canvas.sh 
+Restart=always
+TimeoutStartSec=infinity
+#BusName=org.freedesktop.DisplayManager
+
+
+WorkingDirectory=/home/jmt/simpit/
+
+[Install]
+WantedBy=default.target
+
