@@ -7,8 +7,25 @@
 
     <sim>
         <input>
-        <!-- disable event input so it doesn't clash with HID support-->
+            <!-- disable event input so it doesn't clash with HID support-->
             <no-event-input type="bool">true</no-event-input>
+
         </input>
-    </sim>
+        </sim>
+
+<input>
+        <keyboard>
+            <key n="259">
+                <name>F3</name>
+                <mod-shift>
+                    <desc>Toggle model</desc>
+                    <binding>
+                        <command>property-toggle</command>
+				        <property>/sim/rendering/draw-mask/aircraft</property>
+                    </binding>
+                </mod-shift>
+            </key>
+
+        </keyboard>
+    </input>
 </PropertyList>

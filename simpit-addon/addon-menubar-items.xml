@@ -9,24 +9,25 @@
   <menubar-items>
     <menu>
      <name>simPit</name>
-		<item>
+
+		<!-- <item>
 			<name>Show PFD</name>
 			<binding>
 				<command>property-toggle</command>
 				<property>/sim/rendering/draw-mask/aircraft</property>
 			</binding>
-		</item>
+		</item> -->
 
 		<item>
-			<name>Show / hide aircraft model</name>
+			<name>Show_hide_aircraft_model</name>
 			<key>Shift-F3</key>
 			<binding>
 				<command>property-toggle</command>
 				<property>/sim/rendering/draw-mask/aircraft</property>
 			</binding>
-		</item>
+		</item> 
 		
-    </menu> <!-- of simPit menu -->
+    </menu>
 
   </menubar-items>
 </PropertyList>
