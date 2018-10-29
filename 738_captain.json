@@ -11,14 +11,14 @@
             "url": "ws://localhost:8080/PropertyTreeMirror/canvas/by-index/texture[4]"
         },
         {
-            "path": "/canvas/by-index/texture[6]",
+            "path": "/canvas/by-index/texture[7]",
             "rect": [
                 1171,
                 259,
                 747,
                 711
             ],
-            "url": "ws://localhost:8080/PropertyTreeMirror/canvas/by-index/texture[6]"
+            "url": "ws://localhost:8080/PropertyTreeMirror/canvas/by-index/texture[7]"
         }
     ],
     "configName": "738_captain",
