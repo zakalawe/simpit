@@ -11,6 +11,13 @@
             <no-event-input type="bool">true</no-event-input>
 
         </input>
+
+        <view n="0">
+            <config>
+                <pitch-offset-deg>4.5</pitch-offset-deg>
+            </config>
+        </view>
+
         </sim>
 
 <input>
