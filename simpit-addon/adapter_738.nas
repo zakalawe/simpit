@@ -81,7 +81,11 @@ watchAPInternalProp('VNAV', 'VNAV');
 watchAPInternalProp('VNAV-GS-armed', 'APP');
 watchAPInternalProp('VNAV-VS', 'V/S');
 watchAPInternalProp('VNAV-ALT-light', 'ALT-HLD');
-watchAPInternalProp('THROTTLE-ACTIVE', 'A/T ARM');
+
+# 'SPD' seems weird but correspond to the throttled being armed, as opposed to
+# only working when active, which causes incorrect behaviour when descending
+# under LVL-CHG (and probably also VNAV)
+watchAPInternalProp('SPD', 'A/T ARM');
 
 goflight.mcp.watchPropertyForLED("/input/goflight/mcp/captain-fd-enabled", 'CAP F/D');
 goflight.mcp.watchPropertyForLED("/input/goflight/mcp/fo-fd-enabled", 'F/O F/D');
