@@ -15,6 +15,7 @@
 #include <signal.h>
 
 #include "FGFSTelnetSocket.h"
+#include "CDUKeys.h"
 
 #include <hidapi/hidapi.h>
 
@@ -29,16 +30,54 @@ const int keepAliveInterval = 10;
 
 hid_device* hidComplexDevice = nullptr;
 hid_device* hidPlainDevice = nullptr;
+bool keepRunning = true;
+
+std::vector<bool> keyState;
+
+enum class Lamp
+{
+    Call = 1,
+    Message = 2 ,
+    Exec,
+    Fail = 3,
+    Offset = 4,
+    
+};
+
+bool writeBytes(hid_device* dev, const std::vector<uint8_t>& bytes);
+void readCDU();
+void exitCleanup();
+
+void interruptHandler(int)
+{
+    keepRunning = false;
+}
+
+void setLamp(Lamp l, bool on)
+{
+    writeBytes(hidComplexDevice, 
+        {0x15, static_cast<uint8_t>(l), static_cast<uint8_t>(on ? 0xff : 0), 
+        0, 0, 0, 0, 0});
+}
+
+void setBacklight(uint8_t brightness)
+{
+    writeBytes(hidComplexDevice, {0x2, 0xC3, 0xC0, 0x02, brightness, 0, 0, 0});
+}
 
 void idleForTime(int timeSec)
 {
     time_t endTime = time(nullptr) + timeSec;
-   // setSpecialLEDState(SpecialLEDState::ConnectBackoff);
+    setLamp(Lamp::Fail, true);
     while (time(nullptr) < endTime) {
-        ::usleep(500 * 1000);
-      //  setSpecialLEDState(SpecialLEDState::ConnectBackoff2);
-        ::usleep(500 * 1000);
-       // setSpecialLEDState(SpecialLEDState::ConnectBackoff);
+        readCDU();
+        ::usleep(400 * 1000);
+        setLamp(Lamp::Message, true);
+        setBacklight(2);
+        readCDU();
+        ::usleep(400 * 1000);
+        setLamp(Lamp::Message, false);
+        setBacklight(8);
     }
 }
 
@@ -85,18 +124,12 @@ bool writeBytes(hid_device* dev, const std::vector<uint8_t>& bytes)
 {
     int len = hid_write(dev, bytes.data(), bytes.size());
     if (len != bytes.size()) {
-        cerr << "failed to write command" << endl;
+        cerr << "failed to write command:" << len << "/" << bytes.size() << endl;
         auto w = hid_error(dev);
         if (w) {
             cerr << "\tHID msg:" << ws2s(wstring(w)) << endl;
         }
         return false;
-    }
-
-    uint8_t buf[8];
-    int rd = hid_read_timeout(dev, buf, 8, 0);
-    if (rd > 0) {
-        cout << "read bytes" << rd << endl;
     }
 
     return true;
@@ -114,7 +147,7 @@ void initCDU()
         } else if (wName == L"Plain I/O") {
             hidPlainDevice = hid_open_path(dev->path);
         } else if (wName == L"interfaceIT Controller v2") {
-            // this is the reported name on Macl;
+            // this is the reported name on Mac;
             if (dev->interface_number == 0) {
                 hidPlainDevice = hid_open_path(dev->path);
             } else if (dev->interface_number == 1) {
@@ -132,30 +165,94 @@ void initCDU()
         exit(EXIT_FAILURE);
     }
 
-    cout << "starting CDU up" << endl;
-
     // init CDU
-    writeBytes(hidComplexDevice, {0x1, 0x1, 0x1, 0x10, 0x48, 0x97, 0xA9, 0x0});
-
-    cout << "did init" << endl;
+    writeBytes(hidComplexDevice, {0x1, 0x1, 0x1, 0x10, 0x48, 0x97, 0xA9, 0xff});
 
     // request switch (keypress) callbacks
-  //  writeBytes(hidComplexDevice, {0x18, 0x02, 0x0});
-
-    cout << "enabled key callbacks" << endl;
-
+    writeBytes(hidComplexDevice, {0x18, 0x02, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0});
 
     // enable LEDs
-    writeBytes(hidComplexDevice, {0x14, 0x01});
-    writeBytes(hidComplexDevice, {0x15, 0x01, 0xff});
-    writeBytes(hidComplexDevice, {0x15, 0x02, 0xff});
-
-    cout << "set LEDs" << endl;
-
+    writeBytes(hidComplexDevice, {0x14, 0x01, 0, 0, 0, 0, 0, 0});
+    setLamp(Lamp::Call, true);
+    setLamp(Lamp::Offset, true);
 
     // turn on the screen
-    std::vector<uint8_t> enableLCD = {0xd8};
+    std::vector<uint8_t> enableLCD = {0xd8, 0xff, 0, 0};
     writeBytes(hidPlainDevice, enableLCD);
+
+    atexit(exitCleanup);
+}
+
+void shutdownCDU()
+{
+    if (hidComplexDevice) {
+        writeBytes(hidComplexDevice, {0x1, 0, 0, 0, 0x48, 0x97, 0xA9, 0xff});
+        hid_close(hidComplexDevice);
+        hidComplexDevice = nullptr;
+    }
+
+    if (hidPlainDevice) {
+        // turn off the screen
+        std::vector<uint8_t> disableLCD = {0xff, 0, 0, 0};
+        writeBytes(hidPlainDevice, disableLCD);
+
+        hid_close(hidPlainDevice);
+        hidPlainDevice = nullptr;
+    }
+    
+    hid_exit();
+}
+
+bool testBit(uint8_t* data, size_t index)
+{
+    const size_t byteIndex = index >> 3;
+    const uint8_t b = data[byteIndex];
+    return (b >> (index & 0x7)) & 0x1;
+}
+
+void processInputReport(uint8_t reportId, uint8_t* data, int len)
+{
+    if ((reportId == 0x19) || (reportId == 0x1A) || (reportId == 0x1B)) {
+        // compute active keys
+        size_t offset = (reportId - 0x19) * 32;
+        for (size_t b = 0; b < (4 * 8); ++b) {
+            const bool on = testBit(data, b);
+            if (on != keyState[offset + b]) {
+                keyState[offset + b] = on;
+                const Key k = static_cast<Key>(offset + b);
+                cout << "toggled:" << offset + b << " which is " << codeForKey(k) << endl;
+            }
+        }
+    } else if ((reportId == 0x2) || (reportId == 0x1C)) {
+        // command acknowledgement report
+    } else {
+        std::cerr << "unhandled input report ID:" << static_cast<int>(reportId) << endl;
+    }
+}
+
+void readCDU()
+{
+    // in practice, this means look for key-presses
+    while (true) {
+        uint8_t report[9];
+        int len = hid_read_timeout(hidComplexDevice, report, sizeof(report), 0);
+        if (len == 0)
+            return; // no report to read
+
+        if (len < 0) {
+            // error
+            std::cerr << "error reading from CDU device" << endl;
+            return;
+        }
+
+        processInputReport(report[0], report + 1, len - 1);
+    }
+}
+
+void exitCleanup()
+{
+    cout << "Shutting down CDU HID..." << endl;
+    shutdownCDU();
 }
 
 int main(int argc, char* argv[])
@@ -173,14 +270,17 @@ int main(int argc, char* argv[])
 
     // install signal handlers
     signal(SIGPIPE, SIG_IGN);
+    signal(SIGINT, interruptHandler);
+
     FGFSTelnetSocket socket;
+    keyState.resize(static_cast<int>(Key::NumKeys));
 
     initCDU();
 
     int reconnectBackoff = defaultReconnectBackoff;
     time_t lastReadTime = time(nullptr);
 
-    while (true) {
+    while (keepRunning) {
         if (!socket.isConnected()) {
             if (!socket.connect(host, port)) {
                 idleForTime(reconnectBackoff);
@@ -231,9 +331,6 @@ int main(int argc, char* argv[])
         // check for kill signal
     }
 
-    hid_close(hidComplexDevice);
-    hid_close(hidPlainDevice);
-
-    hid_exit();
+    // atexit handler will run to shutdown HID
     return EXIT_SUCCESS;
 }

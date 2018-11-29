@@ -8,6 +8,7 @@ project(simCDUDriver)
 
 set(SOURCES
   simCDUDriver.cpp
+  CDUKeys.cpp
   ../simGPIODriver/FGFSTelnetSocket.cpp
   ../simGPIODriver/FGFSTelnetSocket.h
 )
