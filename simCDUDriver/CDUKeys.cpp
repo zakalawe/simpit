@@ -81,6 +81,12 @@ static std::vector<KeyInfo> keyData = {
     {"descent", 0}, 
 };
 
+char charForKey(Key k)
+{
+    const auto& info = keyData.at(static_cast<int>(k));
+    return info.code;
+}
+
 std::string codeForKey(Key k)
 {
     const auto& info = keyData.at(static_cast<int>(k));

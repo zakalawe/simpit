@@ -84,3 +84,5 @@ enum class Key
 };
 
 std::string codeForKey(Key k);
+
+char charForKey(Key k);

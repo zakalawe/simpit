@@ -354,7 +354,7 @@ bool FGFSTelnetSocket::syncGetBool(const std::string& path, bool& result)
     bool ok = false;
 
     poll([&result, &ok](const std::string& line) {
-        result = (line == "true");
+        result = (line == "true") || (line == "1");
         ok = true;
     }, 1000);
     

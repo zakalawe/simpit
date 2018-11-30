@@ -9,6 +9,7 @@
 #include <exception>
 #include <locale>
 #include <codecvt>
+#include <sstream>
 
 #include <unistd.h>
 #include <ctime>
@@ -23,7 +24,8 @@ using namespace std;
 
 const std::string fgfsHost = "simpc.local";
 const int fgfsPort = 5501;
-const int cduIndex = 0; // captain's CDU, F/O is likely CDU=1, and the center/spare one is CDU=2
+int cduIndex = 0; // captain's CDU, F/O is likely CDU=1, and the center/spare one is CDU=2
+string cduPropertyPrefix = "/instrumentation/cdu/";
 
 const int defaultReconnectBackoff = 4;
 const int keepAliveInterval = 10;
@@ -32,18 +34,23 @@ hid_device* hidComplexDevice = nullptr;
 hid_device* hidPlainDevice = nullptr;
 bool keepRunning = true;
 
+FGFSTelnetSocket telnetSocket;
 std::vector<bool> keyState;
 
 enum class Lamp
 {
+    Exec = 0,
     Call = 1,
-    Message = 2 ,
-    Exec,
+    Message = 2,
     Fail = 3,
     Offset = 4,
-    
+    Count
 };
 
+std::vector<std::string> lampNames = {
+    "exec", "call", "message", "fail", "offset"
+};
+    
 bool writeBytes(hid_device* dev, const std::vector<uint8_t>& bytes);
 void readCDU();
 void exitCleanup();
@@ -60,9 +67,26 @@ void setLamp(Lamp l, bool on)
         0, 0, 0, 0, 0});
 }
 
+void enableBacklight()
+{
+    // not sure which of these is critical
+    writeBytes(hidComplexDevice, {0x2, 0xC3, 0x06, 0xA5, 0x5A, 0, 0, 0});
+    writeBytes(hidComplexDevice, {0x2, 0xC3, 0xC0, 0x0C, 2, 0, 0, 0});
+    writeBytes(hidComplexDevice, {0x2, 0xC3, 0xC0, 0x0D, 0, 0, 0, 0});
+    
+    // shutdown command seems to be?
+//    writeBytes(hidComplexDevice, {0x2, 0xC3, 0x06, 0xA5, 0x5A, 0, 0, 0});
+}
+
 void setBacklight(uint8_t brightness)
 {
     writeBytes(hidComplexDevice, {0x2, 0xC3, 0xC0, 0x02, brightness, 0, 0, 0});
+}
+
+void queryProperty(uint8_t propId, uint8_t bytes)
+{
+    writeBytes(hidComplexDevice, {0x2, propId, 0xA9, 0, 0, 0, 0, 0});
+    writeBytes(hidComplexDevice, {0x3, bytes, 0xA9, 0, 0, 0, 0, 0});
 }
 
 void idleForTime(int timeSec)
@@ -83,10 +107,23 @@ void idleForTime(int timeSec)
 
 void pollHandler(const std::string& message)
 {
-    // Telnet code doesn't send index for [0]
-    if (message.find("/gear/gear/position-norm=") == 0) {
-       // gearPositionNorm[0] = std::stod(message.substr(25));
-       // LEDUpdateRequired = true;
+    if (message.find(cduPropertyPrefix) == 0) {
+        string relPath = message.substr(cduPropertyPrefix.size());
+
+        if (relPath.find("outputs/") == 0) {
+            const auto eqPos = relPath.find("=");
+            string outputName = relPath.substr(8, eqPos - 8);
+            auto it = std::find(lampNames.begin(), lampNames.end(), outputName);
+            if (it != lampNames.end()) {
+                bool b = stoi(relPath.substr(eqPos + 1));
+                Lamp l = static_cast<Lamp>(std::distance(lampNames.begin(), it));
+                setLamp(l, b);
+            } else {
+                cerr << "CDU: unknown output:" << outputName << endl;
+            }
+        } else {
+            cout << "got telnet message:" << message << endl;
+        }
     } else {
         if (message.find("subscribe") == 0) {
             // subscription confirmation, fine
@@ -99,15 +136,21 @@ void pollHandler(const std::string& message)
     }
 }
 
-void setupSubscriptions(FGFSTelnetSocket& socket)
-{
-    socket.subscribe("/gear/gear[0]/position-norm");
-    socket.subscribe("/gear/gear[1]/position-norm");
-    socket.subscribe("/gear/gear[2]/position-norm");
+void setupSubscriptions()
+{   
+    for (int l = 0; l < static_cast<int>(Lamp::Count); ++l) {
+        telnetSocket.subscribe(cduPropertyPrefix + "outputs/" + lampNames.at(l));
+    }
 }
 
-bool getInitialState(FGFSTelnetSocket& socket)
+bool getInitialState()
 {
+    bool ok;
+    for (int l = 0; l < static_cast<int>(Lamp::Count); ++l) {
+        bool b;
+        ok = telnetSocket.syncGetBool(cduPropertyPrefix + "outputs/" + lampNames.at(l), b);
+        setLamp(static_cast<Lamp>(l), b);
+    }
 
     return true;
 }
@@ -173,13 +216,14 @@ void initCDU()
 
     // enable LEDs
     writeBytes(hidComplexDevice, {0x14, 0x01, 0, 0, 0, 0, 0, 0});
-    setLamp(Lamp::Call, true);
-    setLamp(Lamp::Offset, true);
 
     // turn on the screen
     std::vector<uint8_t> enableLCD = {0xd8, 0xff, 0, 0};
     writeBytes(hidPlainDevice, enableLCD);
 
+    enableBacklight();
+    setBacklight(0x7f);
+    
     atexit(exitCleanup);
 }
 
@@ -210,6 +254,27 @@ bool testBit(uint8_t* data, size_t index)
     return (b >> (index & 0x7)) & 0x1;
 }
 
+void sendCommandForKey(Key k)
+{
+    char c = charForKey(k);
+    ostringstream os;
+    if (c > 0) {
+        os << "run cdu-key cdu=" << cduIndex << " key=" << static_cast<int>(c);
+    } else {
+        string code = codeForKey(k);
+        if (code.find("lsk-") == 0) {
+            const string lskName = code.substr(4);
+            os << "run cdu-lsk cdu=" << cduIndex << " lsk=" << lskName;
+        } else {
+            os << "run cdu-button-" << code << " cdu=" << cduIndex; 
+        }
+    }
+
+    if (telnetSocket.isConnected()) {
+        telnetSocket.write(os.str());
+    }
+}
+
 void processInputReport(uint8_t reportId, uint8_t* data, int len)
 {
     if ((reportId == 0x19) || (reportId == 0x1A) || (reportId == 0x1B)) {
@@ -217,10 +282,9 @@ void processInputReport(uint8_t reportId, uint8_t* data, int len)
         size_t offset = (reportId - 0x19) * 32;
         for (size_t b = 0; b < (4 * 8); ++b) {
             const bool on = testBit(data, b);
-            if (on != keyState[offset + b]) {
-                keyState[offset + b] = on;
+            if (on) {
                 const Key k = static_cast<Key>(offset + b);
-                cout << "toggled:" << offset + b << " which is " << codeForKey(k) << endl;
+                sendCommandForKey(k);
             }
         }
     } else if ((reportId == 0x2) || (reportId == 0x1C)) {
@@ -268,11 +332,20 @@ int main(int argc, char* argv[])
         port = std::stoi(std::string(argv[2]));
     }
 
+    // argument to set CDU index
+
+    // telnet code omits index for [0] case, so we need
+    // to adjust this path when cduIndex is > 0
+    ostringstream os;
+    if (cduIndex > 0) {
+        os << "/instrumentation/cdu[" << cduIndex << "]/";
+        cduPropertyPrefix = os.str();
+    }
+
     // install signal handlers
     signal(SIGPIPE, SIG_IGN);
     signal(SIGINT, interruptHandler);
 
-    FGFSTelnetSocket socket;
     keyState.resize(static_cast<int>(Key::NumKeys));
 
     initCDU();
@@ -281,38 +354,40 @@ int main(int argc, char* argv[])
     time_t lastReadTime = time(nullptr);
 
     while (keepRunning) {
-        if (!socket.isConnected()) {
-            if (!socket.connect(host, port)) {
+        if (!telnetSocket.isConnected()) {
+            setLamp(Lamp::Fail, true);
+            if (!telnetSocket.connect(host, port)) {
                 idleForTime(reconnectBackoff);
                 reconnectBackoff = std::min(reconnectBackoff * 2, 30);
                 continue;
             }
 
-            // reset back-off after succesful connect
             reconnectBackoff = defaultReconnectBackoff;
-           // setSpecialLEDState(SpecialLEDState::DidConnect);
 
-            if (!getInitialState(socket)) {
+            if (!getInitialState()) {
                 std::cerr << "failed to get initial state, will re-try" << std::endl;
-                socket.close();
+                telnetSocket.close();
                 continue;
             }
 
-            setupSubscriptions(socket);
-         //   setSpecialLEDState(SpecialLEDState::DidConnect);
+            setupSubscriptions();
+            cout << "CDU connected to FlightGear" << endl;
+            setLamp(Lamp::Fail, false);
         }
 
         time_t nowSeconds = time(nullptr);
         if ((nowSeconds - lastReadTime) > keepAliveInterval) {
             // force a write to check for dead socket
             lastReadTime = nowSeconds;
-            socket.write("pwd");
+            telnetSocket.write("pwd");
         }
 
-        bool ok = socket.poll(pollHandler, 500 /* msec, so 20hz */);
+        readCDU();
+
+        bool ok = telnetSocket.poll(pollHandler, 50);
         if (!ok) {
             // poll failed, close out
-            socket.close();
+            telnetSocket.close();
             continue;
         }
 
