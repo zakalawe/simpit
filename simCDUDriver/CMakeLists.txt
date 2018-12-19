@@ -32,6 +32,22 @@ elseif(APPLE)
 
     list(APPEND HIDAPI_SOURCES ${HIDAPI_ROOT}/mac/hid.c)
 else()
+
+    FIND_PATH(
+        UDEV_INCLUDE_DIR
+        libudev.h
+        /usr/include
+        /usr/local/include
+        ${UDEV_PATH_INCLUDES}
+    )
+
+    FIND_LIBRARY(
+        UDEV_LIBRARIES
+        NAMES udev libudev
+        PATHS ${ADDITIONAL_LIBRARY_PATHS}
+            ${UDEV_PATH_LIB}
+    )
+
     list(APPEND HIDAPI_SOURCES ${HIDAPI_ROOT}/linux/hid.c)
 endif(WIN32)
 
@@ -40,7 +56,7 @@ add_library(hidapi STATIC  ${HIDAPI_SOURCES} )
 
 target_link_libraries(hidapi ${UDEV_LIBRARIES} ${IOKIT_FRAMEWORK} ${CF_LIBRARY} )
 
-target_include_directories(hidapi PRIVATE ${HIDAPI_ROOT}/hidapi)
+target_include_directories(hidapi PRIVATE ${HIDAPI_ROOT}/hidapi ${UDEV_INCLUDE_DIR})
 target_include_directories(hidapi PUBLIC ${HIDAPI_ROOT})
 ###########################################################
 
