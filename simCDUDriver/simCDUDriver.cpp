@@ -263,12 +263,25 @@ void sendCommandForKey(Key k)
     } else {
         string code = codeForKey(k);
         if (code.find("lsk-") == 0) {
-            const string lskName = code.substr(4);
-            os << "run cdu-lsk cdu=" << cduIndex << " lsk=" << lskName;
-        } else {
+            const string lskName = code.substr(4, 1);
+            // fix base-0 vs base-1 difference :(
+            int lskIndex = std::stoi(code.substr(5));
+            os << "run cdu-lsk cdu=" << cduIndex << " lsk=" << lskName << (lskIndex + 1);
+        } else { 
             os << "run cdu-button-" << code << " cdu=" << cduIndex; 
         }
     }
+
+    if (telnetSocket.isConnected()) {
+        telnetSocket.write(os.str());
+    }
+}
+
+void sendUpCommandForKey(Key k)
+{
+    string code = codeForKey(k);
+    ostringstream os;
+    os << "run cdu-button-" << code << "-up cdu=" << cduIndex; 
 
     if (telnetSocket.isConnected()) {
         telnetSocket.write(os.str());
@@ -282,10 +295,22 @@ void processInputReport(uint8_t reportId, uint8_t* data, int len)
         size_t offset = (reportId - 0x19) * 32;
         for (size_t b = 0; b < (4 * 8); ++b) {
             const bool on = testBit(data, b);
-            if (on) {
-                const Key k = static_cast<Key>(offset + b);
-                sendCommandForKey(k);
+            const Key k = static_cast<Key>(offset + b);
+            const int kIndex = static_cast<int>(k);
+            if (on == keyState.at(kIndex)) {
+                continue; // no actual change
             }
+
+            if (on) {
+                sendCommandForKey(k); // press
+            } else {
+                // release, only need this fora few keys
+                if (k == Key::Clear) {
+                    sendUpCommandForKey(k); // press
+                }
+            }
+
+            keyState[kIndex] = on;
         }
     } else if ((reportId == 0x2) || (reportId == 0x1C)) {
         // command acknowledgement report
@@ -346,7 +371,7 @@ int main(int argc, char* argv[])
     signal(SIGPIPE, SIG_IGN);
     signal(SIGINT, interruptHandler);
 
-    keyState.resize(static_cast<int>(Key::NumKeys));
+    keyState.resize(128);
 
     initCDU();
 
