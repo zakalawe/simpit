@@ -4,9 +4,9 @@
             "path": "/canvas/by-index/texture[3]",
             "rect": [
                 93,
-                -80,
+                -60,
                 1400,
-                1350
+                1340
             ],
             "url": "ws://localhost:8080/PropertyTreeMirror/canvas/by-index/texture[3]"
         }

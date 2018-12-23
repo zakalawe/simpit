@@ -6,7 +6,7 @@ QT_SDK=/home/jmt/QtSDK/5.9.6/gcc_64
 export LD_LIBRARY_PATH=$QT_SDK/lib/:$FGFS_PREFIX/lib
 export PATH=$FGFS_PREFIX/bin:$PATH
 
-fgfs --airport=EHLE \
+fgfs --airport=EGPH \
 	--addon=/home/jmt/simpit/simpit-addon \
 	--log-level=info \
 	--prop:/sim/rendering/graphics-window-qt=true \
@@ -15,7 +15,10 @@ fgfs --airport=EHLE \
 	--telnet=5501 \
 	--httpd=8080 \
 	--prop:/sim/rendering/shaders/skydome=true \
-	--prop:/sim/rendering/multithreading-mode=CullDrawThreadPerContext
+	--prop:/sim/rendering/multithreading-mode=CullDrawThreadPerContext \
+	--enable-terrasync
+	
+	
 	
 
 
