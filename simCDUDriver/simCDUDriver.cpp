@@ -55,6 +55,14 @@ bool writeBytes(hid_device* dev, const std::vector<uint8_t>& bytes);
 void readCDU();
 void exitCleanup();
 
+bool stringAsBool(const std::string& s)
+{
+    if ((s == "1") || (s == "true"))
+        return true;
+
+    return false;
+}
+
 void interruptHandler(int)
 {
     keepRunning = false;
@@ -115,8 +123,8 @@ void pollHandler(const std::string& message)
             string outputName = relPath.substr(8, eqPos - 8);
             auto it = std::find(lampNames.begin(), lampNames.end(), outputName);
             if (it != lampNames.end()) {
-                bool b = stoi(relPath.substr(eqPos + 1));
-                Lamp l = static_cast<Lamp>(std::distance(lampNames.begin(), it));
+                const bool b = stringAsBool(relPath.substr(eqPos + 1));
+                const Lamp l = static_cast<Lamp>(std::distance(lampNames.begin(), it));
                 setLamp(l, b);
             } else {
                 cerr << "CDU: unknown output:" << outputName << endl;
