@@ -9,6 +9,7 @@ export PATH=$FGFS_PREFIX/bin:$PATH
 fgfs --airport=EGPH \
 	--addon=/home/jmt/simpit/simpit-addon \
 	--log-level=info \
+	--fg-scenery=/home/jmt/navigraph_201813_procedures \
 	--prop:/sim/rendering/graphics-window-qt=true \
 	--aircraft-dir=/home/jmt/simpit/737-800 \
 	--aircraft=738 \
