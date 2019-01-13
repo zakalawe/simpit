@@ -4,6 +4,13 @@ SUBSYSTEMS=="usb", ATTRS{idVendor}=="09f3", GROUP="users", MODE="0666"
 # Saitek devices
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="06a3", GROUP="users", MODE="0666"
 
-# Leo Bodna USB joystick interface
+# Leo Bodnar USB joystick interface
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="16c0", GROUP="users", MODE="0666"
+
+# TEKWorx IO interface (FlightDeckSolutions CDUU)
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1fd1", GROUP="users", MODE="0666"
+
+KERNELS=="*event*", ATTRS{idVendor}=="1fd1", ENV{LIBINPUT_IGNORE_DEVICE}="1"
+
+
 
