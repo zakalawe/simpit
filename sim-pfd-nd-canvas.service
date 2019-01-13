@@ -4,7 +4,7 @@ Description=simPit FGQCanvas starter
 #
 
 [Service]
-Type=simple
+Type=idle
 # temporary safety check until all DMs are converted to correct
 # display-manager.service symlink handling
 ExecStart=/home/jmt/simpit/run_canvas.sh 
