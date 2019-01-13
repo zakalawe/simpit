@@ -2,6 +2,8 @@
 
 print("Loading 737-800 hardware adaption layer");
 
+var GF = input_helpers;
+
 var mcpCallbackTable = {
     'speed': autopilot737.speed_button_press,
     'vnav': autopilot737.vnav_button_press,
@@ -66,7 +68,7 @@ makeAlias("/input/goflight/mcp/fo-fd-enabled",
 
 var watchAPInternalProp = func(propName, ledName)
 {
-    goflight.mcp.watchPropertyForLED('/autopilot/internal/' ~ propName, ledName);
+    GF.mcp.watchPropertyForLED('/autopilot/internal/' ~ propName, ledName);
 }
 
 watchAPInternalProp('LNAV-NAV-light', 'VOR-LOC');
@@ -87,10 +89,10 @@ watchAPInternalProp('VNAV-ALT-light', 'ALT-HLD');
 # under LVL-CHG (and probably also VNAV)
 watchAPInternalProp('SPD', 'A/T ARM');
 
-goflight.mcp.watchPropertyForLED("/input/goflight/mcp/captain-fd-enabled", 'CAP F/D');
-goflight.mcp.watchPropertyForLED("/input/goflight/mcp/fo-fd-enabled", 'F/O F/D');
+GF.mcp.watchPropertyForLED("/input/goflight/mcp/captain-fd-enabled", 'CAP F/D');
+GF.mcp.watchPropertyForLED("/input/goflight/mcp/fo-fd-enabled", 'F/O F/D');
 
-goflight.mcp.setAltitudeFtProp("/autopilot/settings/target-altitude-mcp-ft");
+GF.mcp.setAltitudeFtProp("/autopilot/settings/target-altitude-mcp-ft");
 
 # VS window blanking
 var vsWindowProp = props.globals.getNode("/autopilot/internal/VNAV-VS", 1);
@@ -104,7 +106,7 @@ setlistener(vsWindowProp, func() {
 var speedMachProp = props.globals.getNode("/autopilot/internal/SPD-MACH", 1);
 setlistener(speedMachProp, func() { 
     var v = speedMachProp.getValue();
-    goflight.mcp.setMachMode(v);
+    GF.mcp.setMachMode(v);
 }, 1);
 
 ## EFIS ############################################
