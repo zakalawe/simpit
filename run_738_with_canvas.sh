@@ -2,7 +2,7 @@
 
 FGFS_PREFIX=/home/jmt/FGFS/dist
 
-export LD_LIBRARY_PATH=$QT_SDK/lib/:$FGFS_PREFIX/lib
+export LD_LIBRARY_PATH=$QT_SDK/lib/:$FGFS_PREFIX/lib:$FGFS_PREFIX/lib64
 export PATH=$FGFS_PREFIX/bin:$PATH
 
 fgfs --airport=EGPH \
