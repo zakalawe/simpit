@@ -1,24 +1,24 @@
 {
     "canvases": [
         {
-            "path": "/canvas/by-index/texture[6]",
+            "path": "/canvas/by-index/texture[5]",
             "rect": [
                 325,
                 125,
                 580,
                 580
             ],
-            "url": "ws://simpc.local:8080/PropertyTreeMirror/canvas/by-index/texture[6]"
+            "url": "ws://simpc.local:8080/PropertyTreeMirror/canvas/by-index/texture[5]"
         },
         {
-            "path": "/canvas/by-index/texture[3]",
+            "path": "/canvas/by-index/texture[9]",
             "rect": [
-                20,
-                125,
-                120,
-                120
+                10,
+                30,
+                220,
+                220
             ],
-            "url": "ws://simpc.local:8080/PropertyTreeMirror/canvas/by-index/texture[3]"
+            "url": "ws://simpc.local:8080/PropertyTreeMirror/canvas/by-index/texture[9]"
         }
     ],
     "configName": "738_upper_EICAS",
