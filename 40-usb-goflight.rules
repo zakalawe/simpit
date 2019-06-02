@@ -10,7 +10,9 @@ SUBSYSTEMS=="usb", ATTRS{idVendor}=="16c0", GROUP="users", MODE="0666"
 # TEKWorx IO interface (FlightDeckSolutions CDUU)
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="1fd1", GROUP="users", MODE="0666"
 
-KERNELS=="*event*", ATTRS{idVendor}=="1fd1", ENV{LIBINPUT_IGNORE_DEVICE}="1"
+# tell libinput to ignore the CDU and hence not assert
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1fd1", ENV{LIBINPUT_IGNORE_DEVICE}="1"
+
 
 
 
