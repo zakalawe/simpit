@@ -17,7 +17,7 @@ using namespace std;
 
 
 
-// Depending on your servo make, the pulse width min and max may vary, you 
+// Depending on your servo make, the pulse width min and max may vary, you
 // want these to be as small/large as possible without hitting the hard stop
 // for max range. You'll have to tweak them as necessary to match the servos you
 // have!
@@ -26,14 +26,15 @@ using namespace std;
 
 Adafruit_PWMServoDriver* servoDriver = nullptr;
 
-int positionsVec[] = {150, 
+int positionsVec[] = {
+    150,
 	200, // 1 degree
-	240, 
+	240,
 	280, // 5 degree
-	320, 
+	320,
 	370, // 15 degree
-	405, 
-	440, 
+	405,
+	440,
 	480};
 
 int main(int argc, char* argv[])
@@ -41,7 +42,7 @@ int main(int argc, char* argv[])
     servoDriver = new Adafruit_PWMServoDriver(0x40, 60.0); // I2C address
     servoDriver->begin();
 
-  
+
     while (true) {
         for (int i=0; i<9; ++i) {
             servoDriver->setPWM(0, 0, positionsVec[i]);

@@ -23,13 +23,6 @@ const uint8_t Sixpack_I2C_Address = 0x21;
 const uint8_t Sixpack_Lamp_Port = 0;
 const uint8_t Sixpack_Button_Port = 1;
 
-// Depending on your servo make, the pulse width min and max may vary, you 
-// want these to be as small/large as possible without hitting the hard stop
-// for max range. You'll have to tweak them as necessary to match the servos you
-// have!
-#define SERVOMIN  150 // this is the 'minimum' pulse length count (out of 4096)
-#define SERVOMAX  600 // this is the 'maximum' pulse length count (out of 4096)
-
 #if defined(LINUX_BUILD)
 
 extern "C" {
@@ -54,7 +47,7 @@ void initGPIO()
     set_port_direction(Sixpack_I2C_Address, Sixpack_Lamp_Port, 0x0);
     set_port_direction(Sixpack_I2C_Address, Sixpack_Button_Port, 0xff);
 
-    set_port_pullups(Sixpack_I2C_Address, Sixpack_Button_Port, 0xff); // enable internal pullups 
+    set_port_pullups(Sixpack_I2C_Address, Sixpack_Button_Port, 0xff); // enable internal pullups
     invert_port(Sixpack_I2C_Address, Sixpack_Button_Port, 0x0f); // invert output so bank will read as 0
 
 // clear everything
@@ -94,6 +87,7 @@ const int defaultReconnectBackoff = 4;
 const int keepAliveInterval = 10;
 
 double gearPositionNorm[3] = {0.0, 0.0, 0.0};
+double flapPositionNorm = 0.0;
 
 const double gearDownAndLockedThreshold = 0.98;
 const double gearUpAndLockedThreshold = 0.02;
@@ -113,6 +107,8 @@ void setupSubscriptions(FGFSTelnetSocket& socket)
     for (auto s : lampNames) {
         socket.subscribe("/instrumentation/weu/outputs/" + s + "-lamp");
     }
+
+    socket.subscribe("/surface-positions/flap-pos-norm[0]");
 }
 
 bool getInitialState(FGFSTelnetSocket& socket)
@@ -128,10 +124,13 @@ bool getInitialState(FGFSTelnetSocket& socket)
         for (int i=0; i<3; ++i) {
             ok = socket.syncGetDouble("/gear/gear[" + to_string(i) + "]/position-norm",
                                     gearPositionNorm[i]);
-
-            if (!ok) 
+            if (!ok)
                 attemptOk = false;
         }
+
+        ok = socket.syncGetDouble("/surface-positions/flap-pos-norm[0]", flapPositionNorm);
+        if (!ok)
+            attemptOk = false;
 
         for (int i=0; i<8; ++i) {
             bool b;
@@ -149,7 +148,7 @@ bool getInitialState(FGFSTelnetSocket& socket)
             return true;
         }
     } // of attempts
-    
+
     return false;
 }
 
@@ -190,6 +189,30 @@ void updateLampLEDState()
         std::cout << "lamp LED byte is now " << std::hex << (int) lampBits << std::endl;
         write_port(Sixpack_I2C_Address, Sixpack_Lamp_Port, (char) lampBits);
     }
+}
+
+int pwmValueForFlapPos()
+{
+    if (flapPositionNorm <= 0.625) {
+        double normLow = flapPositionNorm / 0.625;
+        return 150 + static_cast<int>(normLow * 220);
+    }
+
+    double normHigh = (flapPositionNorm - 0.625) / 0.375;
+    return 370 + static_cast<int>(normHigh * 110);
+}
+
+void updateFlapPosition()
+{
+    static int lastPWM = 0;
+    int pwm = pwmValueForFlapPos();
+    if (pwm == lastPWM)
+        return;
+
+    lastPWM = pwm;
+#if defined(LINUX_BUILD)
+    servoDriver->setPWM(0, 0, pwm);
+#endif
 }
 
 enum class SpecialLEDState
@@ -301,6 +324,9 @@ void pollHandler(const std::string& message)
     } else if (message.find("/gear/gear[2]/position-norm=") == 0) {
         gearPositionNorm[2] = std::stod(message.substr(28));
         LEDUpdateRequired = true;
+    } else if (message.find("/surface-positions/flap-pos-norm=") == 0) {
+        flapPositionNorm =  std::stod(message.substr(33));
+        updateFlapPosition();
     } else if (message.find("/instrumentation/weu/outputs/") == 0) {
         const auto lampSuffix = message.find(WEU_LAMP_SUFFIX);
         const std::string lampName = message.substr(WEU_OUTPUT_PREFIX_LEN,
@@ -396,6 +422,7 @@ int main(int argc, char* argv[])
 
             setupSubscriptions(socket);
             setSpecialLEDState(SpecialLEDState::DidConnect);
+            updateFlapPosition();
         }
 
         time_t nowSeconds = time(nullptr);
