@@ -26,6 +26,15 @@ using namespace std;
 
 Adafruit_PWMServoDriver* servoDriver = nullptr;
 
+int positionsVec[] = {150, 
+	200, // 1 degree
+	240, 
+	280, // 5 degree
+	320, 
+	370, // 15 degree
+	405, 
+	440, 
+	480};
 
 int main(int argc, char* argv[])
 {
@@ -34,9 +43,9 @@ int main(int argc, char* argv[])
 
   
     while (true) {
-        for (int i=0; i<10; ++i) {
-            servoDriver->setPWM(0, 0, 150 + (45 * i));
-            ::sleep(1);
+        for (int i=0; i<9; ++i) {
+            servoDriver->setPWM(0, 0, positionsVec[i]);
+            ::sleep(2);
         }
     }
 
