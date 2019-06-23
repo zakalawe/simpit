@@ -1,0 +1,14 @@
+[Unit]
+Description=simPi CDU runner
+#Documentation=
+
+
+[Service]
+Type=simple
+ExecStart=/home/pi/simpit/simCDUDriver/simCDUDriver
+Restart=always
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=multi-user.target
+

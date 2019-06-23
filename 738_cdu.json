@@ -3,20 +3,20 @@
         {
             "path": "/canvas/by-index/texture[3]",
             "rect": [
-                93,
-                -60,
-                1400,
-                1340
+                50,
+                -70,
+                1200,
+                1050
             ],
-            "url": "ws://localhost:8080/PropertyTreeMirror/canvas/by-index/texture[3]"
+            "url": "ws://simpc.local:8080/PropertyTreeMirror/canvas/by-index/texture[3]"
         }
     ],
     "configName": "CDU1",
     "window-rect": [
-        2795,
-        2100,
-        1280,
-        996
+        0,
+        0,
+        1024,
+        768
     ],
     "window-state": 2
 }
