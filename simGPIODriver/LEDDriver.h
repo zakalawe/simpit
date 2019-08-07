@@ -3,10 +3,10 @@
 
 #include <cstdint>
 
-#define PCA9622_STATE_OFF = 0x0
-#define PCA9622_STATE_ON = 0x1
-#define PCA9622_STATE_PWM = 0x2
-#define PCA9622_STATE_PWM_GROUP = 0x3
+#define PCA9622_STATE_OFF 0x0
+#define PCA9622_STATE_ON 0x1
+#define PCA9622_STATE_PWM 0x2
+#define PCA9622_STATE_PWM_GROUP 0x3
 
 /**************************************************************************/
 /*!

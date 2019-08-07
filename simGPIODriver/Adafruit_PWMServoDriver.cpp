@@ -26,6 +26,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h> // for usleep
+#include <sys/ioctl.h>
 
 #include <iostream>
 

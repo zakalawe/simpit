@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h> // for usleep
+#include <sys/ioctl.h>
 
 #include <iostream>
 
@@ -110,7 +111,7 @@ void LEDDriver::setPWM(uint8_t num, uint8_t brightness)
   write8(PCA9622_PWM0 + num, brightness);
 }
 
-void LEDDriver::setState(uint8_t num, uint8_t state);
+void LEDDriver::setState(uint8_t num, uint8_t state)
 {
 #ifdef ENABLE_DEBUG_OUTPUT
   Serial.print("Setting state "); Serial.print(num); Serial.print(": "); Serial.print(state);
@@ -120,7 +121,7 @@ void LEDDriver::setState(uint8_t num, uint8_t state);
     uint8_t controlMask = ~(0x3 << controlOffset);
 
     uint8_t value = read8(controlRegister) & controlMask;
-    write8(controlRegister, value) | (state << controlOffset);
+    write8(controlRegister, value | (state << controlOffset));
 }
 
 /*******************************************************************************************/
@@ -129,7 +130,7 @@ uint8_t LEDDriver::read8(uint8_t addr)
 {
   uint8_t buf[1] = { addr };
   if ((write(_i2cHandle, buf, 1)) != 1) {
-		printf("Failed to write to i2c device for write\n");
+		printf("Failed to write to i2c device for read\n");
 		exit(1);
 	}
 
