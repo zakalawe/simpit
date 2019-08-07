@@ -15,13 +15,17 @@
 
 using namespace std;
 
-const uint8_t Gear_I2C_Address = 0x20;
-const uint8_t Gear_Port = 0;
-const uint8_t Gear_Unused_Port = 1;
+const uint8_t GPIO_I2C_Address = 0x20;
+const uint8_t Glare_Switch_Port = 0;
+const uint8_t Gear_Switch_Port = 1;
 
-const uint8_t Sixpack_I2C_Address = 0x21;
-const uint8_t Sixpack_Lamp_Port = 0;
-const uint8_t Sixpack_Button_Port = 1;
+const uint8_t MIP1_I2C_Address = 0x21;
+const uint8_t MIP1_N1_Port = 0;
+const uint8_t MIP1_Speeds_Port = 1;
+
+const uint8_t MIP2_I2C_Address = 0x22;
+const uint8_t MIP2_Lamp_Port = 0;
+const uint8_t MIP2_Unused_Port = 1;
 
 #if defined(LINUX_BUILD)
 
@@ -30,33 +34,16 @@ extern "C" {
 }
 
 #include "Adafruit_PWMServoDriver.h"
+#include "LEDDriver.h"
 
 Adafruit_PWMServoDriver* servoDriver = nullptr;
+LEDDriver* ledDriver = nullptr;
 
 void initGPIO()
 {
-    IOPi_init(Gear_I2C_Address); // initialise one of the io pi buses on i2c address 0x20
-    set_port_direction(Gear_I2C_Address, Gear_Port, 0x03); // set the direction for bank 0 on address 0x20 to be outputs
-    set_port_direction(Gear_I2C_Address, Gear_Unused_Port, 0x00); // set the direction for bank 1 on address 0x20 to be outputs
 
-
-    set_port_pullups(Gear_I2C_Address, Gear_Port, 0x03); // enable internal pullups for bank 0
-    invert_port(Gear_I2C_Address, Gear_Port, 0x03); // invert output so bank will read as 0
-
-    IOPi_init(Sixpack_I2C_Address);
-    set_port_direction(Sixpack_I2C_Address, Sixpack_Lamp_Port, 0x0);
-    set_port_direction(Sixpack_I2C_Address, Sixpack_Button_Port, 0xff);
-
-    set_port_pullups(Sixpack_I2C_Address, Sixpack_Button_Port, 0xff); // enable internal pullups
-    invert_port(Sixpack_I2C_Address, Sixpack_Button_Port, 0x0f); // invert output so bank will read as 0
-
-// clear everything
-    write_port(Sixpack_I2C_Address, Sixpack_Lamp_Port, 0);
-    write_port(Gear_I2C_Address, Gear_Port, 0);
-
-
-    servoDriver = new Adafruit_PWMServoDriver(0x40, 60); // I2C address
-    servoDriver->begin();
+//    servoDriver = new Adafruit_PWMServoDriver(0x40, 60); // I2C address
+//    servoDriver->begin();
 }
 
 #else
@@ -69,9 +56,24 @@ void write_pin(char address, char port, char value)
 }
 
 
-char read_port(char address, char port)
+uint8_t read_port(uint8_t address, uint8_t port)
 {
     return 0;
+}
+
+void IOPi_init(uint8_t address)
+{
+
+}
+
+void set_port_direction(uint8_t address, uint8_t port, uint8_t val)
+{
+
+}
+
+void set_port_pullups(uint8_t address, uint8_t port, uint8_t val)
+{
+
 }
 
 void initGPIO()
@@ -79,6 +81,128 @@ void initGPIO()
     std::cout << "dummy GPIO init"<< std::endl;
 }
 #endif
+
+using Callback = std::function<void(bool)>;
+
+enum class Trigger
+{
+    AnyEdge,
+    High,
+    Low,
+};
+
+class InputBinding
+{
+public:
+    InputBinding(uint8_t addr, uint8_t port, uint8_t bit, Callback cb, Trigger t = Trigger::AnyEdge) :
+        _address(addr),
+        _port(port),
+        _bit(bit),
+        _trigger(t),
+        _callback(cb)
+    {
+
+    }
+
+    void update(uint8_t val)
+    {
+        const uint8_t mask = (1 << _bit);
+        const bool s = (val & mask);
+        if (s != _lastState) {
+            if ((_trigger == Trigger::AnyEdge)
+                || (_trigger == Trigger::High && s)
+                || (_trigger == Trigger::Low && !s))
+            {
+                _callback(s);
+            }
+            _lastState = s;
+        }
+    }
+
+    uint8_t address() const
+    {
+        return _address;
+    }
+
+    uint8_t port() const
+    {
+        return _port;
+    }
+
+    uint8_t bit() const
+    {
+        return _bit;
+    }
+private:
+    const uint8_t _address;
+    const uint8_t _port;
+    const uint8_t _bit;
+
+    Trigger _trigger = Trigger::AnyEdge;
+    bool _lastState = false;
+
+    Callback _callback;
+};
+
+using InputBindingVec = std::vector<InputBinding>;
+
+class GPIOPoller
+{
+public:
+    GPIOPoller(uint8_t addr) :
+        _address(addr)
+    {
+
+    }
+
+    void addBinding(const InputBinding& b)
+    {
+        assert(b.address() == _address);
+        _bindings.push_back(b);
+        _portInputMask[b.port()] |= 1 << b.bit();
+    }
+
+    void open()
+    {
+        IOPi_init(_address); // initialise one of the io pi buses on i2c address 0x20
+        set_port_direction(_address, 0, _portInputMask[0]);
+        set_port_direction(_address, 1, _portInputMask[1]);
+        set_port_pullups(_address, 0, _portInputMask[0]);
+        set_port_pullups(_address, 1, _portInputMask[1]);
+    }
+
+    void update()
+    {
+        const uint8_t inPins0 = read_port(_address, 0);
+        const uint8_t inPins1 = read_port(_address, 1);
+
+        if (inPins0 != _portStates[0]) {
+            _portStates[0] = inPins0;
+
+            for (auto& b : _bindings) {
+                if (b.port() == 0) {
+                    b.update(inPins0);
+                }
+            }
+        }
+
+        if (inPins1 != _portStates[1]) {
+            _portStates[1] = inPins1;
+
+            for (auto& b : _bindings) {
+                if (b.port() == 1) {
+                    b.update(inPins1);
+                }
+            }
+        }
+    }
+private:
+    const uint8_t _address;
+    uint8_t _portStates[2] = {0,0};
+    uint8_t _portInputMask[2] = {0,0};
+    InputBindingVec _bindings;
+};
+
 
 const std::string fgfsHost = "simpc.local";
 const int fgfsPort = 5501;
@@ -98,20 +222,22 @@ std::vector<std::string> lampNames = {
 
 uint8_t lampBits = 0;
 
-void setupSubscriptions(FGFSTelnetSocket& socket)
+FGFSTelnetSocket* global_fgSocket = nullptr;
+
+void setupSubscriptions()
 {
-    socket.subscribe("/gear/gear[0]/position-norm");
-    socket.subscribe("/gear/gear[1]/position-norm");
-    socket.subscribe("/gear/gear[2]/position-norm");
+    global_fgSocket->subscribe("/gear/gear[0]/position-norm");
+    global_fgSocket->subscribe("/gear/gear[1]/position-norm");
+    global_fgSocket->subscribe("/gear/gear[2]/position-norm");
 
     for (auto s : lampNames) {
-        socket.subscribe("/instrumentation/weu/outputs/" + s + "-lamp");
+        global_fgSocket->subscribe("/instrumentation/weu/outputs/" + s + "-lamp");
     }
 
-    socket.subscribe("/surface-positions/flap-pos-norm[0]");
+    global_fgSocket->subscribe("/surface-positions/flap-pos-norm[0]");
 }
 
-bool getInitialState(FGFSTelnetSocket& socket)
+bool getInitialState()
 {
     int attempts = 5;
     bool ok;
@@ -122,19 +248,19 @@ bool getInitialState(FGFSTelnetSocket& socket)
     for (int attempt=0; attempt < attempts; ++attempt) {
         bool attemptOk = true;
         for (int i=0; i<3; ++i) {
-            ok = socket.syncGetDouble("/gear/gear[" + to_string(i) + "]/position-norm",
+            ok = global_fgSocket->syncGetDouble("/gear/gear[" + to_string(i) + "]/position-norm",
                                     gearPositionNorm[i]);
             if (!ok)
                 attemptOk = false;
         }
 
-        ok = socket.syncGetDouble("/surface-positions/flap-pos-norm[0]", flapPositionNorm);
+        ok = global_fgSocket->syncGetDouble("/surface-positions/flap-pos-norm[0]", flapPositionNorm);
         if (!ok)
             attemptOk = false;
 
         for (int i=0; i<8; ++i) {
             bool b;
-            ok = socket.syncGetBool("/instrumentation/weu/outputs/" + lampNames.at(i) + "-lamp", b);
+            ok = global_fgSocket->syncGetBool("/instrumentation/weu/outputs/" + lampNames.at(i) + "-lamp", b);
             if (!ok) {
                 attemptOk = false;
                 std::cerr << "failed to get initial state for:" << "/instrumentation/weu/outputs/" + lampNames.at(i) + "-lamp" << std::endl;
@@ -178,7 +304,7 @@ void updateGearLEDState()
         // output
         std::cout << "LED byte is now " << std::oct << (int) ledByte << std::endl;
         lastLEDState = ledByte;
-        write_port(Gear_I2C_Address, Gear_Port, ledByte);
+       // write_port(Gear_I2C_Address, Gear_Port, ledByte);
     }
 }
 
@@ -187,7 +313,7 @@ void updateLampLEDState()
     if (lastLampLEDState != lampBits) {
         lastLampLEDState = lampBits;
         std::cout << "lamp LED byte is now " << std::hex << (int) lampBits << std::endl;
-        write_port(Sixpack_I2C_Address, Sixpack_Lamp_Port, (char) lampBits);
+       // write_port(Sixpack_I2C_Address, Sixpack_Lamp_Port, (char) lampBits);
     }
 }
 
@@ -242,67 +368,16 @@ void setSpecialLEDState(SpecialLEDState state)
     default:
         break;
     }
-    write_port(Gear_I2C_Address, Gear_Port, ledByte);
+
+   // write_port(Gear_I2C_Address, Gear_Port, ledByte);
 
     static uint8_t lampByte = 0;
     if (lampByte == 0)
         lampByte = 1;
-    write_port(Sixpack_I2C_Address, Sixpack_Lamp_Port, lampByte);
+    //write_port(Sixpack_I2C_Address, Sixpack_Lamp_Port, lampByte);
     lampByte <<= 1;
 }
 
-bool lastGearUpState = false;
-bool lastGearDownState = false;
-
-void pollGearLeverState(FGFSTelnetSocket& socket)
-{
-    const uint8_t inPins = read_port(Gear_I2C_Address, Gear_Port);
-    const bool isUpSwitch = inPins & 0x1;
-    const bool isDownSwitch = inPins & 0x2;
-
-    if (lastGearDownState != isDownSwitch) {
-        if (isDownSwitch) {
-            socket.set("/controls/gear/gear-down", "1");
-        }
-        lastGearDownState = isDownSwitch;
-    } else if (lastGearUpState != isUpSwitch) {
-        if (isUpSwitch) {
-            socket.set("/controls/gear/gear-down", "0");
-        }
-        lastGearUpState = isUpSwitch;
-    }
-}
-
-
-bool weuButtons[3] = {false, false, false };
-
-void pollWEUButtons(FGFSTelnetSocket& socket)
-{
-    const uint8_t inPins = read_port(Sixpack_I2C_Address, Sixpack_Button_Port);
-    for (int b=0; b< 3; ++b) {
-        int pinIndex = b + 1;
-        bool state = (inPins & (1 << pinIndex));
-        if (weuButtons[b] != state) {
-            if (state && (b == 0)) {
-                std::cerr << "Master caution push" << std::endl;
-                socket.write("run weu-caution-button");
-            } else if (state && (b == 2)) {
-                std::cerr << "Fire warn push" << std::endl;
-                socket.write("run weu-fire-button");
-            } else if (b == 1) {
-                if (state) {
-                    std::cerr << "Recall push" << std::endl;
-                    socket.write("run weu-recall-button");
-                } else {
-                    std::cerr << "Recall release" << std::endl;
-                    socket.write("run weu-recall-button-off");
-                }
-            }
-
-            weuButtons[b] = state;
-        }
-    }
-}
 
 const char* WEU_OUTPUT_PREFIX = "/instrumentation/weu/outputs/";
 const int WEU_OUTPUT_PREFIX_LEN = 29;
@@ -376,6 +451,158 @@ void idleForTime(int timeSec)
     }
 }
 
+void defineGearSixpackInputs(GPIOPoller& i)
+{
+    i.addBinding(InputBinding{0x20, 0, 0, [](bool b) {
+            std::cerr << "Fire warn push" << std::endl;
+            global_fgSocket->write("run weu-fire-button");
+    }, Trigger::High});
+
+    i.addBinding(InputBinding{0x20, 0, 1, [](bool b) {
+            std::cerr << "Master Caution push" << std::endl;
+            global_fgSocket->write("run weu-caution-button");
+    }, Trigger::High});
+
+// master caution recall push
+    i.addBinding(InputBinding{0x20, 0, 2, [](bool b) {
+            std::cerr << "recall push" << std::endl;
+            global_fgSocket->write("run weu-recall-button");
+    }, Trigger::High});
+
+// release binding for master-caution recall
+    i.addBinding(InputBinding{0x20, 0, 2, [](bool b) {
+            std::cerr << "recall release" << std::endl;
+            global_fgSocket->write("run weu-recall-button-off");
+    }, Trigger::Low});
+
+// MIP autobrake settings
+    i.addBinding(InputBinding{0x20, 0, 3, [](bool b) {
+            std::cerr << "AB off" << std::endl;
+            global_fgSocket->set("/controls/brakes/autobrake", "0");
+    }, Trigger::High});
+
+    i.addBinding(InputBinding{0x20, 0, 4, [](bool b) {
+            std::cerr << "AB RTO" << std::endl;
+            global_fgSocket->set("/controls/brakes/autobrake", "-1");
+    }, Trigger::High});
+
+    i.addBinding(InputBinding{0x20, 0, 5, [](bool b) {
+            std::cerr << "AB 1" << std::endl;
+            global_fgSocket->set("/controls/brakes/autobrake", "1");
+    }, Trigger::High});
+
+    i.addBinding(InputBinding{0x20, 0, 6, [](bool b) {
+            std::cerr << "AB 2" << std::endl;
+            global_fgSocket->set("/controls/brakes/autobrake", "2");
+    }, Trigger::High});
+
+    i.addBinding(InputBinding{0x20, 0, 7, [](bool b) {
+            std::cerr << "AB 3" << std::endl;
+            global_fgSocket->set("/controls/brakes/autobrake", "3");
+    }, Trigger::High});
+
+// gear port
+    // 0 and 1 are outputs
+    i.addBinding(InputBinding{0x20, 1, 2, [](bool b) {
+        std::cerr << "gear down" << std::endl;
+        global_fgSocket->set("/controls/gear/gear-down", "1");
+    }, Trigger::High});
+
+    i.addBinding(InputBinding{0x20, 1, 3, [](bool b) {
+        std::cerr << "gear up" << std::endl;
+        global_fgSocket->set("/controls/gear/gear-down", "0");
+    }, Trigger::High});
+
+    i.addBinding(InputBinding{0x20, 1, 4, [](bool b) {
+        std::cerr << "gear off" << std::endl;
+           // global_fgSocket->set("/controls/gear/gear-down", "0");
+    }, Trigger::High});
+
+// MIP reuse
+    i.addBinding(InputBinding{0x20, 1, 5, [](bool b) {
+                std::cerr << "AB MAX" << std::endl;
+                global_fgSocket->set("/controls/brakes/autobrake", "4");
+        }, Trigger::High});
+
+    i.addBinding(InputBinding{0x20, 1, 6, [](bool b) {
+                std::cerr << "SPD Less-than" << std::endl;
+        }, Trigger::High});
+
+    i.addBinding(InputBinding{0x20, 1, 7, [](bool b) {
+                std::cerr << "SPD set" << std::endl;
+        }, Trigger::High});
+}
+
+void defineMIPInputs(GPIOPoller& i)
+{
+    i.addBinding(InputBinding{0x21, 0, 0, [](bool b) {
+        std::cerr << "N1 1" << std::endl;
+    }, Trigger::High});
+
+    i.addBinding(InputBinding{0x21, 0, 1, [](bool b) {
+        std::cerr << "N1 2" << std::endl;
+    }, Trigger::High});
+
+    i.addBinding(InputBinding{0x21, 0, 2, [](bool b) {
+        std::cerr << "N1 Both" << std::endl;
+    }, Trigger::High});
+
+    i.addBinding(InputBinding{0x21, 0, 3, [](bool b) {
+        std::cerr << "N1 auto" << std::endl;
+    }, Trigger::High});
+
+    i.addBinding(InputBinding{0x21, 0, 4, [](bool b) {
+        // N1 encoder
+        std::cerr << "N1 encoder A " << b << std::endl;
+    }});
+
+    i.addBinding(InputBinding{0x21, 0, 5, [](bool b) {
+        // N1 encoder
+        std::cerr << "N1 encoder B " << b << std::endl;
+    }});
+
+    i.addBinding(InputBinding{0x21, 0, 6, [](bool b) {
+        std::cerr << "Fuel-flow used" << std::endl;
+    }, Trigger::High});
+
+    i.addBinding(InputBinding{0x21, 0, 7, [](bool b) {
+        std::cerr << "Fuel-flow reset" << std::endl;
+    }, Trigger::High});
+
+// second port
+    i.addBinding(InputBinding{0x21, 1, 0, [](bool b) {
+        std::cerr << "Speed AUTO" << std::endl;
+    }, Trigger::High});
+
+    i.addBinding(InputBinding{0x21, 1, 1, [](bool b) {
+        std::cerr << "Speed V1" << std::endl;
+    }, Trigger::High});
+
+    i.addBinding(InputBinding{0x21, 1, 2, [](bool b) {
+        std::cerr << "Speed Vr" << std::endl;
+    }, Trigger::High});
+
+    i.addBinding(InputBinding{0x21, 1, 3, [](bool b) {
+        std::cerr << "Speed WT" << std::endl;
+    }, Trigger::High});
+
+    i.addBinding(InputBinding{0x21, 1, 4, [](bool b) {
+        std::cerr << "Speed encoder A " << b << std::endl;
+    }});
+
+    i.addBinding(InputBinding{0x21, 1, 5, [](bool b) {
+        std::cerr << "Speed encoder B " << b << std::endl;
+    }});
+
+    i.addBinding(InputBinding{0x21, 1, 6, [](bool b) {
+        std::cerr << "MFD ENG" << std::endl;
+    }, Trigger::High});
+
+    i.addBinding(InputBinding{0x21, 1, 7, [](bool b) {
+        std::cerr << "MFD SYS" << std::endl;
+    }, Trigger::High});
+}
+
 
 int main(int argc, char* argv[])
 {
@@ -393,18 +620,25 @@ int main(int argc, char* argv[])
     // install signal handlers?
     signal(SIGPIPE, SIG_IGN);
 
-    FGFSTelnetSocket socket;
+    global_fgSocket = new FGFSTelnetSocket;
 
-    initGPIO();
+    GPIOPoller gearSixpackInputs(0x20);
+    GPIOPoller mipInputs(0x21);
+
+    defineGearSixpackInputs(gearSixpackInputs);
+    defineMIPInputs(mipInputs);
+
+    gearSixpackInputs.open();
+    mipInputs.open();
 
     int reconnectBackoff = defaultReconnectBackoff;
     time_t lastReadTime = time(nullptr);
 
     while (true) {
-        if (!socket.isConnected()) {
+        if (!global_fgSocket->isConnected()) {
         //    std::cerr << "starting connection" << std::endl;
             setSpecialLEDState(SpecialLEDState::Connecting);
-            if (!socket.connect(host, port)) {
+            if (!global_fgSocket->connect(host, port)) {
                 idleForTime(reconnectBackoff);
                 reconnectBackoff = std::min(reconnectBackoff * 2, 30);
                 continue;
@@ -414,13 +648,13 @@ int main(int argc, char* argv[])
             reconnectBackoff = defaultReconnectBackoff;
             setSpecialLEDState(SpecialLEDState::DidConnect);
 
-            if (!getInitialState(socket)) {
+            if (!getInitialState()) {
                 std::cerr << "failed to get initial state, will re-try" << std::endl;
-                socket.close();
+                global_fgSocket->close();
                 continue;
             }
 
-            setupSubscriptions(socket);
+            setupSubscriptions();
             setSpecialLEDState(SpecialLEDState::DidConnect);
             updateFlapPosition();
         }
@@ -429,18 +663,18 @@ int main(int argc, char* argv[])
         if ((nowSeconds - lastReadTime) > keepAliveInterval) {
             // force a write to check for dead socket
             lastReadTime = nowSeconds;
-            socket.write("pwd");
+            global_fgSocket->write("pwd");
         }
 
-        bool ok = socket.poll(pollHandler, 500 /* msec, so 20hz */);
+        bool ok = global_fgSocket->poll(pollHandler, 500 /* msec, so 20hz */);
         if (!ok) {
             // poll failed, close out
-            socket.close();
+            global_fgSocket->close();
             continue;
         }
 
-        pollGearLeverState(socket);
-        pollWEUButtons(socket);
+        gearSixpackInputs.update();
+        mipInputs.update();
 
         if (LEDUpdateRequired) {
             LEDUpdateRequired = false;
