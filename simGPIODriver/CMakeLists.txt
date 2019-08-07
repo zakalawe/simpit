@@ -18,12 +18,14 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
         ABE_IoPi.c
         ABE_IoPi.h)
 
-    SET(ADAfruit_sources
+    SET(driver_sources
         Adafruit_PWMServoDriver.cpp
-        Adafruit_PWMServoDriver.h)
+        Adafruit_PWMServoDriver.h
+        LEDDriver.cpp
+        LEDDriver.h)
 endif()
 
-add_executable(simGPIODriver ${SOURCES} ${ABE_sources} ${ADAfruit_sources})
+add_executable(simGPIODriver ${SOURCES} ${ABE_sources} ${driver_sources})
 
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
@@ -33,5 +35,7 @@ endif()
 install(TARGETS simGPIODriver RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    add_executable(servoTest servoTest.cpp ${ADAfruit_sources})
+    add_executable(servoTest servoTest.cpp ${driver_sources})
+    add_executable(ledTest ledTest.cpp ${driver_sources})
+
 endif()
