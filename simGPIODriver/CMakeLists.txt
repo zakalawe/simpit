@@ -11,6 +11,9 @@ set(SOURCES
   simGPIODriver.cpp
   FGFSTelnetSocket.cpp
   FGFSTelnetSocket.h
+  GPIO.h
+  GPIO.cpp
+  LEDDriver.h
 )
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
@@ -22,7 +25,9 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
         Adafruit_PWMServoDriver.cpp
         Adafruit_PWMServoDriver.h
         LEDDriver.cpp
-        LEDDriver.h)
+        )
+else()
+    set(driver_sources dummy_LEDDriver.cpp)
 endif()
 
 add_executable(simGPIODriver ${SOURCES} ${ABE_sources} ${driver_sources})
@@ -37,5 +42,10 @@ install(TARGETS simGPIODriver RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     add_executable(servoTest servoTest.cpp ${driver_sources})
     add_executable(ledTest ledTest.cpp ${driver_sources})
+endif()
 
+# make ArgP work on non-GLIBC
+if (APPLE)
+    target_include_directories(simGPIODriver PUBLIC /usr/local/include)
+    target_link_libraries(simGPIODriver PUBLIC /usr/local/lib/libargp.a)
 endif()

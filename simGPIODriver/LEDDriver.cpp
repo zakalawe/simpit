@@ -149,3 +149,20 @@ void LEDDriver::write8(uint8_t addr, uint8_t d) {
 		exit(1);
 	}
 }
+
+LEDOutput::LEDOutput(LEDDriver* driver, uint8_t num) :
+  _index(num),
+  _driver(driver)
+{
+  setState(false); // sync initial state
+}
+
+void LEDOutput::setState(bool b)
+{
+  if (b == _state) {
+    return;
+  }
+
+  _state = b;
+  _driver->setState(_index, b ? PCA9622_STATE_ON : PCA9622_STATE_OFF);
+}

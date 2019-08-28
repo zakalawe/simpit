@@ -32,4 +32,16 @@ class LEDDriver {
   void write8(uint8_t addr, uint8_t d);
 };
 
+class LEDOutput
+{
+public:
+  LEDOutput(LEDDriver* driver, uint8_t num);
+
+  void setState(bool b);
+private:
+  const uint8_t _index;
+  LEDDriver* _driver;
+  bool _state = false;
+};
+
 #endif
