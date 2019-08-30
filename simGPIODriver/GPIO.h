@@ -5,6 +5,7 @@
 #include <functional>
 #include <cstdint>
 #include <memory>
+#include <cassert>
 
 using Callback = std::function<void(bool)>;
 using UpdateCallback = std::function<void(void)>;
