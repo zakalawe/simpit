@@ -487,6 +487,11 @@ OutputBindingRef autobrakeLamps[4];
     fireCautionToggle = !fireCautionToggle;
     fireCautionLamps[0]->setState(fireCautionToggle);
     fireCautionLamps[1]->setState(!fireCautionToggle);
+
+    static int mipLampsIt = 3; // so we start at zero
+    autobrakeLamps[mipLampsIt]->setState(false);
+    mipLampsIt = (mipLampsIt + 1) % 4;
+    autobrakeLamps[mipLampsIt]->setState(true);
 }
 
 const char* argp_program_version = "simGPIO 0.2";
@@ -535,6 +540,7 @@ int main(int argc, char* argv[])
 
     global_fgSocket = new FGFSTelnetSocket;
     global_ledDriver = new LEDDriver();
+    global_ledDriver->begin();
 
     GPIOPoller gearSixpackInputs(0x20);
     GPIOPoller mipInputs(0x21);
