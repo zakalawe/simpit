@@ -8,15 +8,40 @@
                 1200,
                 1050
             ],
-            "url": "ws://simpc.local:8080/PropertyTreeMirror/canvas/by-index/texture[3]"
+            "url": "ws://simpc.local:8080/PropertyTreeMirror/canvas/by-index/texture[3]",
+            "window":1
+        },
+        {
+            "path": "/canvas/by-index/texture[6]",
+            "rect": [
+                20,
+                30,
+                600,
+                540
+            ],
+            "url": "ws://simpc.local:8080/PropertyTreeMirror/canvas/by-index/texture[6]",
+            "window":0
         }
     ],
     "configName": "CDU1",
-    "window-rect": [
-        0,
-        0,
-        1024,
-        768
-    ],
-    "window-state": 2
+    "windows":[
+        {
+            "screen": "HDMI2",
+            "rect":[
+                0,
+                0,
+                1024,
+                768
+            ]
+        },
+        {
+            "screen":"HDMI1",
+            "rect":[
+                0,
+                0,
+                800,
+                600
+            ]
+        }
+    ]
 }

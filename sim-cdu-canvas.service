@@ -5,14 +5,11 @@ Description=simPit FGQCanvas starter
 
 [Service]
 Type=simple
-# temporary safety check until all DMs are converted to correct
-# display-manager.service symlink handling
-ExecStart=/home/pi/fgqcanvas simpit/738_cdu.json 
+
+ExecStart=/home/pi/fgqcanvas -platform eglfs simpit/738_cdu.json 
 Restart=always
 TimeoutStartSec=infinity
-#BusName=org.freedesktop.DisplayManager
-Environment=QT_QPA_EGLFS_PHYSICAL_HEIGHT=180 QT_QPA_EGLFS_PHYSICAL_WIDTH=260
-
+Environment=QT_QPA_EGLFS_KMS_CONFIG=/home/pi/simpit/sim-cdu-kms-config.json 
 WorkingDirectory=/home/pi
 
 [Install]
