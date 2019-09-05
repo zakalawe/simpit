@@ -464,6 +464,11 @@ void defineMIPOutputs(GPIOPoller& gpio)
         autobrakeLamps[i] = OutputBindingRef{new OutputBinding{0, i}};
         gpio.addOutput(autobrakeLamps[i]);
     }
+
+    for (uint8_t i=0; i<3; i++) {
+        afdsLamps[i] = OutputBindingRef{new OutputBinding{1, i}};
+        gpio.addOutput(afdsLamps[i]);
+    }
 }
 
 void updateTestMode()
@@ -492,6 +497,11 @@ OutputBindingRef autobrakeLamps[4];
     autobrakeLamps[mipLampsIt]->setState(false);
     mipLampsIt = (mipLampsIt + 1) % 4;
     autobrakeLamps[mipLampsIt]->setState(true);
+
+    static int afdsLampsIt = 2; // so we start at zero
+    afdsLamps[afdsLampsIt]->setState(false);
+    afdsLampsIt = (afdsLampsIt + 1) % 3;
+    afdsLamps[afdsLampsIt]->setState(true);
 }
 
 const char* argp_program_version = "simGPIO 0.2";
@@ -554,6 +564,7 @@ int main(int argc, char* argv[])
 
     gearSixpackInputs.open();
     mipInputs.open();
+    mipOutputs.open();
 
     int reconnectBackoff = defaultReconnectBackoff;
     time_t lastReadTime = time(nullptr);
@@ -608,7 +619,8 @@ int main(int argc, char* argv[])
 
         gearSixpackInputs.update();
         mipInputs.update();
-        // check for kill signal
+        mipOutputs.update();
+	// check for kill signal
     }
 
     return EXIT_SUCCESS;
