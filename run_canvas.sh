@@ -5,6 +5,5 @@ FGFS_PREFIX=/home/jmt/FGFS/dist
 export LD_LIBRARY_PATH=$QT_SDK/lib/:$FGFS_PREFIX/lib
 export PATH=$FGFS_PREFIX/bin:$PATH
 
-fgqcanvas 738_captain.json &
-fgqcanvas --frameless 738_cdu.json
+fgqcanvas 738_captain.json
 
