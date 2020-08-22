@@ -3,20 +3,20 @@
         {
             "path": "/canvas/by-index/texture[5]",
             "rect": [
-                325,
-                125,
-                580,
-                580
+                680,
+                40,
+                1100,
+                1020
             ],
             "url": "ws://simpc.local:8080/PropertyTreeMirror/canvas/by-index/texture[5]"
         },
         {
             "path": "/canvas/by-index/texture[9]",
             "rect": [
-                10,
-                30,
-                220,
-                220
+                35,
+                90,
+                480,
+                440
             ],
             "url": "ws://simpc.local:8080/PropertyTreeMirror/canvas/by-index/texture[9]"
         }
