@@ -86,6 +86,22 @@ void enableBacklight()
 //    writeBytes(hidComplexDevice, {0x2, 0xC3, 0x06, 0xA5, 0x5A, 0, 0, 0});
 }
 
+void setLCDEnabled(bool b)
+{
+    const std::vector<uint8_t> enableLCD = {0xd8, 0xff, 0, 0};
+    const std::vector<uint8_t> disableLCD = {0xff, 0, 0, 0};
+
+    writeBytes(hidPlainDevice, b ? enableLCD : disableLCD);
+
+    const int hdmiDevices[2] = {2, 7};
+
+    for (int dev=0; dev<2; dev++) {
+        char cmdBuf[128];
+        snprintf(cmdBuf, 128, "vcgencmd display_power %d %d", b ? 1 : 0, hdmiDevices[dev]);
+        system(cmdBuf);
+    }
+} 
+
 void setBacklight(uint8_t brightness)
 {
     writeBytes(hidComplexDevice, {0x2, 0xC3, 0xC0, 0x02, brightness, 0, 0, 0});
@@ -225,10 +241,6 @@ void initCDU()
     // enable LEDs
     writeBytes(hidComplexDevice, {0x14, 0x01, 0, 0, 0, 0, 0, 0});
 
-    // turn on the screen
-    std::vector<uint8_t> enableLCD = {0xd8, 0xff, 0, 0};
-    writeBytes(hidPlainDevice, enableLCD);
-
     enableBacklight();
     setBacklight(0x7f);
     
@@ -243,11 +255,9 @@ void shutdownCDU()
         hidComplexDevice = nullptr;
     }
 
-    if (hidPlainDevice) {
-        // turn off the screen
-        std::vector<uint8_t> disableLCD = {0xff, 0, 0, 0};
-        writeBytes(hidPlainDevice, disableLCD);
+    setLCDEnabled(false);
 
+    if (hidPlainDevice) {
         hid_close(hidPlainDevice);
         hidPlainDevice = nullptr;
     }
@@ -389,6 +399,8 @@ int main(int argc, char* argv[])
     while (keepRunning) {
         if (!telnetSocket.isConnected()) {
             setLamp(Lamp::Fail, true);
+            setLCDEnabled(false);
+            
             if (!telnetSocket.connect(host, port)) {
                 idleForTime(reconnectBackoff);
                 reconnectBackoff = std::min(reconnectBackoff * 2, 30);
@@ -406,6 +418,7 @@ int main(int argc, char* argv[])
             setupSubscriptions();
             cout << "CDU connected to FlightGear" << endl;
             setLamp(Lamp::Fail, false);
+            setLCDEnabled(true);
         }
 
         time_t nowSeconds = time(nullptr);
