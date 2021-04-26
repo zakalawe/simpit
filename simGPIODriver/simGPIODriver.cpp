@@ -275,6 +275,17 @@ void pollHandler(const std::string& message)
     }
 }
 
+void setHDMIEnabled(bool b)
+{
+    const int hdmiDevices[1] = {2};
+
+    for (int dev=0; dev<1; dev++) {
+        char cmdBuf[128];
+        snprintf(cmdBuf, 128, "vcgencmd display_power %d %d", b ? 1 : 0, hdmiDevices[dev]);
+        system(cmdBuf);
+    }
+} 
+
 void idleForTime(int timeSec)
 {
     time_t endTime = time(nullptr) + timeSec;
@@ -575,6 +586,7 @@ int main(int argc, char* argv[])
         //    std::cerr << "starting connection" << std::endl;
             setSpecialLEDState(SpecialLEDState::Connecting);
             if (!global_fgSocket->connect(fgfsHost, fgfsPort)) {
+                setHDMIEnabled(false); // save backlight when not connected
                 idleForTime(reconnectBackoff);
                 reconnectBackoff = std::min(reconnectBackoff * 2, 30);
                 continue;
@@ -593,6 +605,7 @@ int main(int argc, char* argv[])
             setupSubscriptions();
             setSpecialLEDState(SpecialLEDState::DidConnect);
             updateFlapPosition();
+            setHDMIEnabled(true); // enable HDMI output after successful connection
         }
 
         if (global_testMode) {
