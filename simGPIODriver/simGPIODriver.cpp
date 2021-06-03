@@ -19,17 +19,21 @@
 
 using namespace std;
 
-const uint8_t GPIO_I2C_Address = 0x20;
-const uint8_t Glare_Switch_Port = 0;
-const uint8_t Gear_Switch_Port = 1;
+const uint8_t Gear_I2C_Address = 0x20;
+const uint8_t Gear_Lamp_Port = 0;
+const uint8_t Gear_Sixpack_Switch_Port = 1;
 
-const uint8_t MIP1_I2C_Address = 0x21;
+const uint8_t AFDS_I2C_Address = 0x21;
+const uint8_t Sixpack_Lamp_Port = 0;
+const uint8_t AFDS_MIP_Lamp_Port = 1;
+
+const uint8_t MIP1_I2C_Address = 0x22;
 const uint8_t MIP1_N1_Port = 0;
 const uint8_t MIP1_Speeds_Port = 1;
 
-const uint8_t MIP2_I2C_Address = 0x22;
-const uint8_t MIP2_Lamp_Port = 0;
-const uint8_t MIP2_Unused_Port = 1;
+const uint8_t MIP2_I2C_Address = 0x23;
+const uint8_t MIP2_Autobrake_Port = 0;
+const uint8_t MIP2_AFDS_Switch_Port = 1;
 
 LEDDriver* global_ledDriver = nullptr;
 bool global_testMode = false;
@@ -75,10 +79,10 @@ std::vector<std::string> lampNames = {
 
 FGFSTelnetSocket* global_fgSocket = nullptr;
 
-LEDOutput* gearLamps[6];
-LEDOutput* sixpackLamps[6];
+OutputBindingRef gearLamps[6];
+OutputBindingRef sixpackLamps[6];
 OutputBindingRef fireCautionLamps[2];
-OutputBindingRef afdsLamps[3];
+OutputBindingRef afdsLamps[5];
 OutputBindingRef autobrakeLamps[4];
 
 void setupSubscriptions()
@@ -94,13 +98,11 @@ void setupSubscriptions()
     global_fgSocket->subscribe("/surface-positions/flap-pos-norm[0]");
 }
 
-void setLampBit(uint8_t index, bool b)
+void setWEULampBit(uint8_t index, bool b)
 {
     if (index < 2) {
-        // GPIO for the 12v lamps
         fireCautionLamps[index]->setState(b);
     } else {
-        // LED output for the sixpack
         sixpackLamps[index - 2]->setState(b);
     }
 }
@@ -132,7 +134,7 @@ bool getInitialState()
                 attemptOk = false;
                 std::cerr << "failed to get initial state for:" << "/instrumentation/weu/outputs/" + lampNames.at(i) + "-lamp" << std::endl;
             }
-            setLampBit(i, b);
+            setWEULampBit(i, b);
         }
 
         if (attemptOk) { // all values in this attempt worked, we are done
@@ -144,7 +146,7 @@ bool getInitialState()
 }
 
 // map analogue gear positions to lamp discrete values
-void updateGearLEDState()
+void updateGearLampState()
 {
     uint8_t offset = 0;
     for (int i=0; i<3; ++i) {
@@ -179,7 +181,7 @@ void updateFlapPosition()
 
     lastPWM = pwm;
 #if defined(LINUX_BUILD)
-    servoDriver->setPWM(0, 0, pwm);
+   // servoDriver->setPWM(0, 0, pwm);
 #endif
 }
 
@@ -193,6 +195,7 @@ enum class SpecialLEDState
 
 void setSpecialLEDState(SpecialLEDState state)
 {
+#if 0
     uint8_t ledByte = 0;
     switch (state) {
     case SpecialLEDState::Connecting:
@@ -210,7 +213,7 @@ void setSpecialLEDState(SpecialLEDState state)
     default:
         break;
     }
-
+#endif
 }
 
 
@@ -253,7 +256,7 @@ void pollHandler(const std::string& message)
                 const int lampIndex = std::distance(lampNames.begin(), it);
                 const auto v = message.substr(lampSuffix + WEU_LAMP_SUFFIX_LEN);
                 const bool b = (v == "true");
-                setLampBit(lampIndex, b);
+                setWEULampBit(lampIndex, b);
             } catch (std::exception& e) {
                 std::cerr << "exception processing value data:" << message.substr(lampSuffix + WEU_LAMP_SUFFIX_LEN) << std::endl;
                 std::cerr << "full message was:" << message << std::endl;
@@ -271,7 +274,7 @@ void pollHandler(const std::string& message)
     }
 
     if (gearUpdateRequired) {
-        updateGearLEDState();
+        updateGearLampState();
     }
 }
 
@@ -300,186 +303,226 @@ void idleForTime(int timeSec)
 
 void defineGearSixpackInputs(GPIOPoller& i)
 {
-    i.addBinding(InputBinding{0x20, 0, 0, [](bool b) {
+    i.addBinding(InputBinding{Gear_I2C_Address, Gear_Sixpack_Switch_Port, 3, [](bool b) {
             std::cerr << "Fire warn push" << std::endl;
             global_fgSocket->write("run weu-fire-button");
     }, Trigger::High});
 
-    i.addBinding(InputBinding{0x20, 0, 1, [](bool b) {
+    i.addBinding(InputBinding{Gear_I2C_Address, Gear_Sixpack_Switch_Port, 4, [](bool b) {
             std::cerr << "Master Caution push" << std::endl;
             global_fgSocket->write("run weu-caution-button");
     }, Trigger::High});
 
 // master caution recall push
-    i.addBinding(InputBinding{0x20, 0, 2, [](bool b) {
+    i.addBinding(InputBinding{Gear_I2C_Address, Gear_Sixpack_Switch_Port, 5, [](bool b) {
             std::cerr << "recall push" << std::endl;
             global_fgSocket->write("run weu-recall-button");
     }, Trigger::High});
 
 // release binding for master-caution recall
-    i.addBinding(InputBinding{0x20, 0, 2, [](bool b) {
+    i.addBinding(InputBinding{Gear_I2C_Address, Gear_Sixpack_Switch_Port, 5, [](bool b) {
             std::cerr << "recall release" << std::endl;
             global_fgSocket->write("run weu-recall-button-off");
     }, Trigger::Low});
 
-// MIP autobrake settings
-    i.addBinding(InputBinding{0x20, 0, 3, [](bool b) {
-            std::cerr << "AB off" << std::endl;
-            global_fgSocket->set("/controls/brakes/autobrake", "0");
-    }, Trigger::High});
-
-    i.addBinding(InputBinding{0x20, 0, 4, [](bool b) {
-            std::cerr << "AB RTO" << std::endl;
-            global_fgSocket->set("/controls/brakes/autobrake", "-1");
-    }, Trigger::High});
-
-    i.addBinding(InputBinding{0x20, 0, 5, [](bool b) {
-            std::cerr << "AB 1" << std::endl;
-            global_fgSocket->set("/controls/brakes/autobrake", "1");
-    }, Trigger::High});
-
-    i.addBinding(InputBinding{0x20, 0, 6, [](bool b) {
-            std::cerr << "AB 2" << std::endl;
-            global_fgSocket->set("/controls/brakes/autobrake", "2");
-    }, Trigger::High});
-
-    i.addBinding(InputBinding{0x20, 0, 7, [](bool b) {
-            std::cerr << "AB 3" << std::endl;
-            global_fgSocket->set("/controls/brakes/autobrake", "3");
-    }, Trigger::High});
-
 // gear port
     // 0 and 1 are outputs
-    i.addBinding(InputBinding{0x20, 1, 2, [](bool b) {
+    i.addBinding(InputBinding{Gear_I2C_Address, Gear_Sixpack_Switch_Port, 1, [](bool b) {
         std::cerr << "gear down" << std::endl;
         global_fgSocket->set("/controls/gear/gear-down", "1");
     }, Trigger::High});
 
-    i.addBinding(InputBinding{0x20, 1, 3, [](bool b) {
+    i.addBinding(InputBinding{Gear_I2C_Address, Gear_Sixpack_Switch_Port, 0, [](bool b) {
         std::cerr << "gear up" << std::endl;
         global_fgSocket->set("/controls/gear/gear-down", "0");
     }, Trigger::High});
 
-    i.addBinding(InputBinding{0x20, 1, 4, [](bool b) {
+    i.addBinding(InputBinding{Gear_I2C_Address, Gear_Sixpack_Switch_Port, 2, [](bool b) {
         std::cerr << "gear off" << std::endl;
            // global_fgSocket->set("/controls/gear/gear-down", "0");
     }, Trigger::High});
-
-// MIP reuse
-    i.addBinding(InputBinding{0x20, 1, 5, [](bool b) {
-                std::cerr << "AB MAX" << std::endl;
-                global_fgSocket->set("/controls/brakes/autobrake", "4");
-        }, Trigger::High});
-
-    i.addBinding(InputBinding{0x20, 1, 6, [](bool b) {
-                std::cerr << "SPD Less-than" << std::endl;
-        }, Trigger::High});
-
-    i.addBinding(InputBinding{0x20, 1, 7, [](bool b) {
-                std::cerr << "SPD set" << std::endl;
-        }, Trigger::High});
 }
 
-void defineMIPInputs(GPIOPoller& i)
+void defineMIPInputs(GPIOPoller& mipA, GPIOPoller& mipB)
 {
-    i.addBinding(InputBinding{0x21, 0, 0, [](bool b) {
+    mipA.addBinding(InputBinding{MIP1_I2C_Address, MIP1_N1_Port, 6, [](bool b) {
         std::cerr << "N1 1" << std::endl;
     }, Trigger::High});
 
-    i.addBinding(InputBinding{0x21, 0, 1, [](bool b) {
+    mipA.addBinding(InputBinding{MIP1_I2C_Address, MIP1_N1_Port, 7, [](bool b) {
         std::cerr << "N1 2" << std::endl;
     }, Trigger::High});
 
-    i.addBinding(InputBinding{0x21, 0, 2, [](bool b) {
+    mipA.addBinding(InputBinding{MIP1_I2C_Address, MIP1_N1_Port, 4, [](bool b) {
         std::cerr << "N1 Both" << std::endl;
     }, Trigger::High});
 
-    i.addBinding(InputBinding{0x21, 0, 3, [](bool b) {
+    mipA.addBinding(InputBinding{MIP1_I2C_Address, MIP1_N1_Port, 5, [](bool b) {
         std::cerr << "N1 auto" << std::endl;
     }, Trigger::High});
 
-    i.addBinding(InputBinding{0x21, 0, 4, [](bool b) {
+    mipA.addBinding(InputBinding{MIP1_I2C_Address, MIP1_N1_Port, 3, [](bool b) {
         // N1 encoder
         std::cerr << "N1 encoder A " << b << std::endl;
     }});
 
-    i.addBinding(InputBinding{0x21, 0, 5, [](bool b) {
+    mipA.addBinding(InputBinding{MIP1_I2C_Address, MIP1_N1_Port, 2, [](bool b) {
         // N1 encoder
         std::cerr << "N1 encoder B " << b << std::endl;
     }});
 
-    i.addBinding(InputBinding{0x21, 0, 6, [](bool b) {
+    mipA.addBinding(InputBinding{MIP1_I2C_Address, MIP1_N1_Port, 1, [](bool b) {
         std::cerr << "Fuel-flow used" << std::endl;
     }, Trigger::High});
 
-    i.addBinding(InputBinding{0x21, 0, 7, [](bool b) {
+    mipA.addBinding(InputBinding{MIP1_I2C_Address, MIP1_N1_Port, 0, [](bool b) {
         std::cerr << "Fuel-flow reset" << std::endl;
     }, Trigger::High});
 
 // second port
-    i.addBinding(InputBinding{0x21, 1, 0, [](bool b) {
+    mipA.addBinding(InputBinding{MIP1_I2C_Address, MIP1_Speeds_Port, 0, [](bool b) {
         std::cerr << "Speed AUTO" << std::endl;
     }, Trigger::High});
 
-    i.addBinding(InputBinding{0x21, 1, 1, [](bool b) {
+    mipA.addBinding(InputBinding{MIP1_I2C_Address, MIP1_Speeds_Port, 1, [](bool b) {
         std::cerr << "Speed V1" << std::endl;
     }, Trigger::High});
 
-    i.addBinding(InputBinding{0x21, 1, 2, [](bool b) {
+    mipA.addBinding(InputBinding{MIP1_I2C_Address, MIP1_Speeds_Port, 2, [](bool b) {
         std::cerr << "Speed Vr" << std::endl;
     }, Trigger::High});
 
-    i.addBinding(InputBinding{0x21, 1, 3, [](bool b) {
+    mipA.addBinding(InputBinding{MIP1_I2C_Address, MIP1_Speeds_Port, 3, [](bool b) {
         std::cerr << "Speed WT" << std::endl;
     }, Trigger::High});
 
-    i.addBinding(InputBinding{0x21, 1, 4, [](bool b) {
+
+    mipA.addBinding(InputBinding{MIP1_I2C_Address, MIP1_Speeds_Port, 4, [](bool b) {
+                std::cerr << "SPD Less-than" << std::endl;
+        }, Trigger::High});
+
+    mipA.addBinding(InputBinding{MIP1_I2C_Address, MIP1_Speeds_Port, 5, [](bool b) {
+                std::cerr << "SPD set" << std::endl;
+        }, Trigger::High});
+
+    mipA.addBinding(InputBinding{MIP1_I2C_Address, MIP1_Speeds_Port, 6, [](bool b) {
         std::cerr << "Speed encoder A " << b << std::endl;
     }});
 
-    i.addBinding(InputBinding{0x21, 1, 5, [](bool b) {
+    mipA.addBinding(InputBinding{MIP1_I2C_Address, MIP1_Speeds_Port, 7, [](bool b) {
         std::cerr << "Speed encoder B " << b << std::endl;
     }});
 
-    i.addBinding(InputBinding{0x21, 1, 6, [](bool b) {
+// second MIP  chip
+
+    mipB.addBinding(InputBinding{MIP2_I2C_Address, MIP2_Autobrake_Port, 6, [](bool b) {
         std::cerr << "MFD ENG" << std::endl;
     }, Trigger::High});
 
-    i.addBinding(InputBinding{0x21, 1, 7, [](bool b) {
+    mipB.addBinding(InputBinding{MIP2_I2C_Address, MIP2_Autobrake_Port, 7, [](bool b) {
         std::cerr << "MFD SYS" << std::endl;
     }, Trigger::High});
+
+    // MIP autobrake settings
+    mipB.addBinding(InputBinding{MIP2_I2C_Address, MIP2_Autobrake_Port, 1, [](bool b) {
+            std::cerr << "AB off" << std::endl;
+            global_fgSocket->set("/controls/brakes/autobrake", "0");
+    }, Trigger::High});
+
+    mipB.addBinding(InputBinding{MIP2_I2C_Address, MIP2_Autobrake_Port, 0, [](bool b) {
+            std::cerr << "AB RTO" << std::endl;
+            global_fgSocket->set("/controls/brakes/autobrake", "-1");
+    }, Trigger::High});
+
+    mipB.addBinding(InputBinding{MIP2_I2C_Address, MIP2_Autobrake_Port, 2, [](bool b) {
+            std::cerr << "AB 1" << std::endl;
+            global_fgSocket->set("/controls/brakes/autobrake", "1");
+    }, Trigger::High});
+
+    mipB.addBinding(InputBinding{MIP2_I2C_Address, MIP2_Autobrake_Port, 3, [](bool b) {
+            std::cerr << "AB 2" << std::endl;
+            global_fgSocket->set("/controls/brakes/autobrake", "2");
+    }, Trigger::High});
+
+    mipB.addBinding(InputBinding{MIP2_I2C_Address, MIP2_Autobrake_Port, 4, [](bool b) {
+            std::cerr << "AB 3" << std::endl;
+            global_fgSocket->set("/controls/brakes/autobrake", "3");
+    }, Trigger::High});
+
+    mipB.addBinding(InputBinding{MIP2_I2C_Address, MIP2_Autobrake_Port, 5, [](bool b) {
+                std::cerr << "AB MAX" << std::endl;
+                global_fgSocket->set("/controls/brakes/autobrake", "4");
+        }, Trigger::High});
+
+
 }
 
-void defineGearOutputs()
+void defineAFDSInputs(GPIOPoller& i)
 {
-    for (int i=0; i<6; i++) {
-        gearLamps[i] = new LEDOutput(global_ledDriver, i);
+// AFDS switches
+    i.addBinding(InputBinding{MIP2_I2C_Address, MIP2_AFDS_Switch_Port, 0, [](bool b) {
+            std::cerr << "A/T RESET" << std::endl;
+        }, Trigger::High});
+
+    i.addBinding(InputBinding{MIP2_I2C_Address, MIP2_AFDS_Switch_Port, 1, [](bool b) {
+            std::cerr << "A/P RESET" << std::endl;
+        }, Trigger::High});
+
+    i.addBinding(InputBinding{MIP2_I2C_Address, MIP2_AFDS_Switch_Port, 2, [](bool b) {
+            std::cerr << "FMC RESET" << std::endl;
+        }, Trigger::High});
+
+    i.addBinding(InputBinding{MIP2_I2C_Address, MIP2_AFDS_Switch_Port, 3, [](bool b) {
+            std::cerr << "AFDS TEST1" << std::endl;
+        }, Trigger::High});
+
+    i.addBinding(InputBinding{MIP2_I2C_Address, MIP2_AFDS_Switch_Port, 4, [](bool b) {
+            std::cerr << "AFDS TEST2" << std::endl;
+        }, Trigger::High});
+}
+
+void defineGearOutputs(GPIOPoller& gpio)
+{
+    for (uint8_t i=0; i<6; i++) {
+        //gearLamps[i] = new LEDOutput(global_ledDriver, i);
+        gearLamps[i] = OutputBindingRef{new OutputBinding{Gear_Lamp_Port, 0}};
+        gpio.addOutput(gearLamps[i]);
     }
 }
 
-void defineSixpackOutputs(GPIOPoller& i)
+void defineSixpackOutputs(GPIOPoller& gpio)
 {
-    fireCautionLamps[0] = OutputBindingRef{new OutputBinding{1, 0}};
-    fireCautionLamps[1] = OutputBindingRef{new OutputBinding{1, 1}};
-    i.addOutput(fireCautionLamps[0]);
-    i.addOutput(fireCautionLamps[1]);
+    fireCautionLamps[0] = OutputBindingRef{new OutputBinding{Sixpack_Lamp_Port, 6}};
+    fireCautionLamps[1] = OutputBindingRef{new OutputBinding{Sixpack_Lamp_Port, 7}};
+    gpio.addOutput(fireCautionLamps[0]);
+    gpio.addOutput(fireCautionLamps[1]);
 
-    for (int i=0; i<6; i++) {
-        sixpackLamps[i] = new LEDOutput(global_ledDriver, i + 8);
+    for (uint8_t i=0; i<6; i++) {
+        //sixpackLamps[i] = new LEDOutput(global_ledDriver, i + 8);
+        sixpackLamps[i] = OutputBindingRef{new OutputBinding{Sixpack_Lamp_Port, i}};
+        gpio.addOutput(sixpackLamps[i]);
     }
 }
 
-void defineMIPOutputs(GPIOPoller& gpio)
+void defineAFDSOutputs(GPIOPoller& gpio)
 {
-    for (uint8_t i=0; i<4; i++) {
-        autobrakeLamps[i] = OutputBindingRef{new OutputBinding{0, i}};
+    for (uint8_t i=0; i<5; i++) {
+        const uint8_t pin = i + 3;
+        afdsLamps[i] = OutputBindingRef{new OutputBinding{AFDS_MIP_Lamp_Port, pin}};
+        gpio.addOutput(afdsLamps[i]);
+    }
+}
+
+void defineMIPOutputs(GPIOPoller& gpio, GPIOPoller& mip2GPIO)
+{
+    for (uint8_t i=0; i<3; i++) {
+        autobrakeLamps[i] = OutputBindingRef{new OutputBinding{AFDS_MIP_Lamp_Port, i}};
         gpio.addOutput(autobrakeLamps[i]);
     }
 
-    for (uint8_t i=0; i<3; i++) {
-        afdsLamps[i] = OutputBindingRef{new OutputBinding{1, i}};
-        gpio.addOutput(afdsLamps[i]);
-    }
+// odd pin out
+    autobrakeLamps[3] = OutputBindingRef{new OutputBinding{MIP2_AFDS_Switch_Port, 5}};
+    mip2GPIO.addOutput(autobrakeLamps[3]);
 }
 
 void updateTestMode()
@@ -511,7 +554,7 @@ OutputBindingRef autobrakeLamps[4];
 
     static int afdsLampsIt = 2; // so we start at zero
     afdsLamps[afdsLampsIt]->setState(false);
-    afdsLampsIt = (afdsLampsIt + 1) % 3;
+    afdsLampsIt = (afdsLampsIt + 1) % 5;
     afdsLamps[afdsLampsIt]->setState(true);
 }
 
@@ -560,22 +603,27 @@ int main(int argc, char* argv[])
     signal(SIGPIPE, SIG_IGN);
 
     global_fgSocket = new FGFSTelnetSocket;
-    global_ledDriver = new LEDDriver();
-    global_ledDriver->begin();
+    // global_ledDriver = new LEDDriver();
+    // global_ledDriver->begin();
 
-    GPIOPoller gearSixpackInputs(0x20);
-    GPIOPoller mipInputs(0x21);
-    GPIOPoller mipOutputs(0x22);
+    GPIOPoller gearSixpackInputs(Gear_I2C_Address);
+    GPIOPoller sixpackAFDSOutputs(AFDS_I2C_Address);
+    GPIOPoller mipA(MIP1_I2C_Address);
+    GPIOPoller mipB(MIP2_I2C_Address);
 
     defineGearSixpackInputs(gearSixpackInputs);
-    defineMIPInputs(mipInputs);
-    defineMIPOutputs(mipOutputs);
-    defineGearOutputs();
-    defineSixpackOutputs(mipInputs);
+    defineMIPInputs(mipA, mipB);
+    defineAFDSInputs(mipB);
+
+    defineMIPOutputs(sixpackAFDSOutputs, mipB);
+    defineGearOutputs(gearSixpackInputs);
+    defineSixpackOutputs(sixpackAFDSOutputs);
+    defineAFDSOutputs(mipA);
 
     gearSixpackInputs.open();
-    mipInputs.open();
-    mipOutputs.open();
+    sixpackAFDSOutputs.open();
+    mipA.open();
+    mipB.open();
 
     int reconnectBackoff = defaultReconnectBackoff;
     time_t lastReadTime = time(nullptr);
@@ -631,8 +679,9 @@ int main(int argc, char* argv[])
         }
 
         gearSixpackInputs.update();
-        mipInputs.update();
-        mipOutputs.update();
+        sixpackAFDSOutputs.update();
+        mipA.update();
+        mipB.update();
 	// check for kill signal
     }
 
